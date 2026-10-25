@@ -2,7 +2,7 @@
 <html lang="he" dir="rtl">
 <head>
   <link rel="manifest" href="manifest.json">
-<meta charset="UTF-8">
+  <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>ניהול מעטפות - רוני ובתאל</title>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
@@ -196,7 +196,7 @@
     .income-item-box { display: flex; justify-content: space-between; align-items: center; padding: 12px; border-radius: 12px; border: 1px solid var(--border); margin-bottom: 8px; background: #f8fafc; transition: all 0.2s; }
     .income-item-box.received { background: #f0fdf4; border-color: #bbf7d0; color: #166534; font-weight: bold; }
 
-    .tx-item { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); font-size: 14px; }
+    .tx-item { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); font-size: 14px; flex-wrap: wrap; gap: 6px; }
     .savings-item { display: flex; justify-content: space-between; align-items: center; padding: 12px; border-radius: 12px; border: 1px solid var(--border); margin-bottom: 8px; background: #f8fafc; transition: all 0.2s; }
     .savings-item.completed { background: #f0fdf4; border-color: #bbf7d0; color: #166534; font-weight: bold; }
     .savings-checkbox { width: 22px; height: 22px; cursor: pointer; accent-color: var(--success); }
@@ -1022,7 +1022,7 @@
       if (incomes.confirmedIncome === 0) {
         netBannerElem.className = 'net-banner-detailed negative';
         document.getElementById('netBalanceValue').innerHTML = `
-          <div style="display:flex; flex-direction:column; items-end:flex-end;">
+          <div style="display:flex; flex-direction:column; align-items:flex-end;">
             <span style="font-size:16px; font-weight:800; color:#991b1b;">-₪${totalOverallExpensesActual.toLocaleString()} (טרם אושרו הכנסות בפועל)</span>
             <span style="font-size:12px; color:#475569; font-weight:bold; margin-top:2px;">צפי סוף חודש: <b>${netBalanceProjected >= 0 ? '+₪' + netBalanceProjected.toLocaleString() : '-₪' + Math.abs(netBalanceProjected).toLocaleString()}</b></span>
           </div>
@@ -1874,7 +1874,7 @@
                 if (s.includes('תאריך עסקה') || s.includes('תאריך רכישה')) dateCol = cIdx;
                 else if (s.includes('שם בית') || s.includes('בית עסק')) merchantCol = cIdx;
                 else if (s.includes('קטגוריה')) catCol = cIdx;
-                else if (s.includes('סכום חיוב')) chargeAmtCol = cIdx;
+                else if (s.includes('סכום חיוב') || s.includes('סכום בש"ח')) chargeAmtCol = cIdx;
                 else if (s.includes('סכום עסקה מקורי') || s.includes('סכום עסקה')) origAmtCol = cIdx;
               });
               break;
@@ -1897,8 +1897,27 @@
 
               const merchantVal = merchantCol !== -1 && row[merchantCol] ? String(row[merchantCol]).trim() : '';
               let categoryVal = catCol !== -1 && row[catCol] ? String(row[catCol]).trim() : '';
-              let amt = (chargeAmtCol !== -1 && row[chargeAmtCol] !== undefined) ? row[chargeAmtCol] : row[origAmtCol];
-              let amtNum = parseFloat(String(amt).replace(/[^\d.]/g, ''));
+
+              let chargeAmt = (chargeAmtCol !== -1 && row[chargeAmtCol] !== undefined) ? row[chargeAmtCol] : undefined;
+              let origAmt = (origAmtCol !== -1 && row[origAmtCol] !== undefined) ? row[origAmtCol] : undefined;
+
+              let chargeAmtNum = parseFloat(String(chargeAmt || '').replace(/[^\d.]/g, ''));
+              let origAmtNum = parseFloat(String(origAmt || '').replace(/[^\d.]/g, ''));
+
+              let amtNum = !isNaN(chargeAmtNum) && chargeAmtNum > 0 ? chargeAmtNum : origAmtNum;
+
+              if (rowStr.includes('תשלום') || merchantVal.includes('מתוך') || categoryVal.includes('תשלומים')) {
+                const fullRowStr = row.join(' ');
+                const match = fullRowStr.match(/(\d+)\s*(?:מתוך|\/)\s*(\d+)/);
+                if (match && match[2]) {
+                  const totalInstallments = parseInt(match[2]);
+                  if (totalInstallments > 1 && !isNaN(origAmtNum) && origAmtNum > 0) {
+                    if (amtNum === origAmtNum || amtNum > (origAmtNum / totalInstallments + 5)) {
+                      amtNum = Math.round((origAmtNum / totalInstallments) * 100) / 100;
+                    }
+                  }
+                }
+              }
 
               if (!isNaN(amtNum) && amtNum > 0 && merchantVal && merchantVal !== 'None') {
                 const hoaInfo = calculateHoaDebt();
@@ -1978,7 +1997,7 @@
         `).join('');
 
         html += `
-          <div class="tx-item" style="gap:6px;">
+          <div class="tx-item">
             <div style="flex:1;">
               <div style="font-weight:bold;">${t.merchant}</div>
               <div style="font-size:11px; color:#64748b; display:flex; align-items:center; gap:6px; margin-top:2px;">
@@ -2028,585 +2047,4 @@
       `).join('');
 
       let html = `
-        <p style="font-size:13px; color:#64748b; margin-bottom:10px;">בחר לאיזו קבועה לשייך את העסקה <b>"${t.merchant}"</b> (₪${t.amount}):</p>
-        <div style="max-height:240px; overflow-y:auto; margin-bottom:10px;">
-          ${optionsHtml}
-        </div>
-        <button onclick="createAndSelectNewFixedPending(${idx})" style="width:100%; padding:10px; background:#e0f2fe; color:#0369a1; border:1px solid #7dd3fc; border-radius:8px; font-weight:bold; cursor:pointer;">
-          ➕ הוסף קבועה חדשה לרשימה ושייך אליה
-        </button>
-      `;
-
-      document.getElementById('modalBody').innerHTML = html;
-      document.getElementById('modal').style.display = 'flex';
-    }
-
-    function confirmPendingTxFixedSelection(idx, fixedId) {
-      if (appState.pendingImportTxs[idx]) {
-        appState.pendingImportTxs[idx].envId = 'fixed_matched_' + fixedId;
-        appState.pendingImportTxs[idx].matchedFixedId = fixedId;
-      }
-      renderPreviewModal();
-    }
-
-    function createAndSelectNewFixedPending(idx) {
-      const newItem = addNewGeneralFixedPrompt();
-      if (newItem) {
-        confirmPendingTxFixedSelection(idx, newItem.id);
-      }
-    }
-
-    function removePendingTx(idx) {
-      appState.pendingImportTxs.splice(idx, 1);
-      renderPreviewModal();
-    }
-
-    function confirmImport() {
-      appState.pendingImportTxs.forEach(t => {
-        if (t.envId.startsWith('fixed_matched_') || t.envId === 'fixed') {
-          if (t.matchedFixedId) {
-            const currentMonthKey = getCurrentMonthKey();
-            const fixedItem = appState.generalFixedList.find(f => f.id === t.matchedFixedId);
-            if (fixedItem) {
-              if (!fixedItem.monthlyData) fixedItem.monthlyData = {};
-              fixedItem.monthlyData[currentMonthKey] = { isConfirmed: true, amount: t.amount };
-            }
-          }
-        } else {
-          appState.transactions.push(t);
-        }
-      });
-
-      appState.pendingImportTxs = [];
-      closeModal();
-      render();
-    }
-
-    function openEnvModal(envId) {
-      appState.activeModalEnvId = envId;
-      const envName = (appState.envelopes.find(e => e.id === envId)?.name || (envId === 'var_other' ? 'שונות' : 'מעטפה'));
-      const allEnvTxs = appState.transactions.filter(t => t.envId === envId && isTxInSelectedMonth(t));
-
-      document.getElementById('modalTitle').innerText = `פירוט מעטפת ${envName}`;
-      let html = `<div id="modalTxList"></div>`;
-
-      document.getElementById('modalBody').innerHTML = html;
-      renderModalTxsList(allEnvTxs);
-      document.getElementById('modal').style.display = 'flex';
-    }
-
-    function renderModalTxsList(txs) {
-      const container = document.getElementById('modalTxList');
-      if (!container) return;
-
-      if (txs.length === 0) {
-        container.innerHTML = `<div style="text-align:center; color:#94a3b8; padding:20px;">אין עסקאות במעטפת זו בחודש זה</div>`;
-        return;
-      }
-
-      let html = '';
-      txs.forEach(t => {
-        const badgeHtml = t.isPepper ? `<span class="badge-pepper">Pepper</span>` : `<span class="badge-isra">הבינלאומי</span>`;
-
-        html += `
-          <div class="tx-item">
-            <div>
-              <div style="font-weight:bold;">${t.merchant}</div>
-              <div style="font-size:11px; color:#64748b; display:flex; align-items:center; gap:6px; margin-top:2px;">
-                ${badgeHtml} <span>${t.date}</span>
-              </div>
-            </div>
-            <div style="display:flex; align-items:center; gap:6px;">
-              <span style="font-weight:bold;">₪${t.amount.toLocaleString()}</span>
-              <button class="btn-action" onclick="editTxCategory('${t.id}')">✏️ ${t.category || 'כללי'}</button>
-              <button class="btn-action" onclick="moveTxEnvelopePrompt('${t.id}')">⇄ מעטפה</button>
-              <button class="btn-delete-item" onclick="deleteTx('${t.id}')">🗑️</button>
-            </div>
-          </div>
-        `;
-      });
-      container.innerHTML = html;
-    }
-
-    function editTxCategory(txId) {
-      const t = appState.transactions.find(x => x.id == txId);
-      if (!t) return;
-      const newCat = prompt('ערוך שם קטגוריה:', t.category || 'כללי');
-      if (newCat !== null) {
-        t.category = newCat.trim();
-        render();
-        openEnvModal(appState.activeModalEnvId);
-      }
-    }
-
-    function moveTxEnvelopePrompt(txId) {
-      const t = appState.transactions.find(x => x.id == txId);
-      if (!t) return;
-
-      document.getElementById('modalTitle').innerText = `⇄ העברת עסקה - ${t.merchant}`;
-
-      let envOptionsHtml = appState.envelopes.map(env => `
-        <button onclick="executeMoveTxToEnv('${txId}', '${env.id}')" style="width:100%; text-align:right; padding:12px; margin-bottom:8px; border-radius:10px; border:1px solid var(--border); background:#f8fafc; font-weight:bold; cursor:pointer; display:flex; justify-content:space-between; align-items:center;">
-          <span>📁 מעטפת ${env.name}</span>
-          <span style="color:var(--text-muted); font-size:12px;">תקציב: ₪${env.budget.toLocaleString()}</span>
-        </button>
-      `).join('');
-
-      let html = `
-        <p style="font-size:13px; color:#64748b; margin-bottom:12px;">בחר מעטפה יעד עבור העסקה <b>"${t.merchant}"</b> (₪${t.amount.toLocaleString()}):</p>
-        <div style="max-height:280px; overflow-y:auto; margin-bottom:12px;">
-          ${envOptionsHtml}
-          <button onclick="executeMoveTxToEnv('${txId}', 'var_other')" style="width:100%; text-align:right; padding:12px; margin-bottom:8px; border-radius:10px; border:1px solid var(--purple-border); background:var(--purple-soft); color:#6b21a8; font-weight:bold; cursor:pointer;">
-            📁 שונות (חיובים מחיסכון)
-          </button>
-          <button onclick="assignTxToFixedModal('${txId}')" style="width:100%; text-align:right; padding:12px; margin-bottom:8px; border-radius:10px; border:1px solid var(--cyan-border); background:var(--cyan-light); color:#0284c7; font-weight:bold; cursor:pointer;">
-            📌 מעטפת קבועות (שיוך לקבועה באשראי)
-          </button>
-        </div>
-      `;
-
-      document.getElementById('modalBody').innerHTML = html;
-      document.getElementById('modal').style.display = 'flex';
-    }
-
-    function executeMoveTxToEnv(txId, envId) {
-      const t = appState.transactions.find(x => x.id == txId);
-      if (t) {
-        t.envId = envId;
-        render();
-        if (appState.activeModalEnvId) openEnvModal(appState.activeModalEnvId);
-        else closeModal();
-      }
-    }
-
-    function assignTxToFixedModal(txId) {
-      const t = appState.transactions.find(x => x.id == txId);
-      if (!t) return;
-
-      document.getElementById('modalTitle').innerText = "משויך לקבועות - בחירת ספק";
-
-      let optionsHtml = appState.generalFixedList.map(item => `
-        <button onclick="confirmMoveTxToFixed('${txId}', '${item.id}')" style="width:100%; text-align:right; padding:12px; margin-bottom:8px; border-radius:10px; border:1px solid var(--border); background:#f8fafc; font-weight:bold; cursor:pointer; display:flex; justify-content:space-between; align-items:center;">
-          <span>📌 ${item.name}</span>
-          <span style="color:var(--text-muted); font-size:12px;">₪${item.defaultAmount}</span>
-        </button>
-      `).join('');
-
-      let html = `
-        <p style="font-size:13px; color:#64748b; margin-bottom:12px;">בחר לאיזו קבועה לשייך את העסקה <b>"${t.merchant}"</b> על סך <b>₪${t.amount.toLocaleString()}</b>:</p>
-        <div style="max-height:280px; overflow-y:auto; margin-bottom:12px;">
-          ${optionsHtml}
-        </div>
-        <button onclick="createNewFixedFromTx('${txId}')" style="width:100%; padding:12px; background:#e0f2fe; color:#0369a1; border:1px solid #7dd3fc; border-radius:10px; font-weight:bold; cursor:pointer;">
-          ➕ הוסף קבועה חדשה לרשימה ושייך אליה
-        </button>
-      `;
-
-      document.getElementById('modalBody').innerHTML = html;
-      document.getElementById('modal').style.display = 'flex';
-    }
-
-    function confirmMoveTxToFixed(txId, fixedId) {
-      const t = appState.transactions.find(x => x.id == txId);
-      const fixedItem = appState.generalFixedList.find(f => f.id === fixedId);
-      
-      if (t && fixedItem) {
-        const currentMonthKey = getCurrentMonthKey();
-        if (!fixedItem.monthlyData) fixedItem.monthlyData = {};
-        fixedItem.monthlyData[currentMonthKey] = { isConfirmed: true, amount: t.amount };
-
-        appState.transactions = appState.transactions.filter(x => x.id != txId);
-        
-        alert(`העסקה "${t.merchant}" (₪${t.amount}) שוייכה בהצלחה לקבועה "${fixedItem.name}" והועברה למעטפת הקבועות!`);
-        closeModal();
-        render();
-      }
-    }
-
-    function createNewFixedFromTx(txId) {
-      const newItem = addNewGeneralFixedPrompt();
-      if (newItem) {
-        confirmMoveTxToFixed(txId, newItem.id);
-      }
-    }
-
-    function deleteTx(txId) {
-      if (confirm('האם למחוק עסקה זו?')) {
-        appState.transactions = appState.transactions.filter(x => x.id != txId);
-        render();
-        openEnvModal(appState.activeModalEnvId);
-      }
-    }
-
-    function openGeneralFixedModal() {
-      document.getElementById('modalTitle').innerText = "מעקב קבועות מאשראי";
-      
-      let html = `
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-          <span style="font-size:13px; font-weight:bold; color:#0369a1;">רשימת הקבועות באשראי:</span>
-          <button onclick="addNewGeneralFixedFromModal()" style="font-size:12px; background:#e0f2fe; color:#0369a1; border:none; padding:6px 12px; border-radius:8px; font-weight:bold; cursor:pointer;">+ הוסף קבועה חדשה</button>
-        </div>
-      `;
-
-      appState.generalFixedList.forEach((item, idx) => {
-        const details = getGeneralFixedMonthlyDetails(item);
-        if (details.isDue) {
-          html += `
-            <div class="fixed-item-box ${details.isConfirmed ? 'confirmed' : ''}">
-              <div>
-                <div style="font-weight:bold;">${item.name}</div>
-                <div style="font-size:11px; color:#64748b;">בנק: ${item.bank === 'Pepper' ? 'Pepper' : 'הבינלאומי'}</div>
-              </div>
-              <div style="display:flex; align-items:center; gap:8px;">
-                <span style="font-weight:bold;">₪${details.amount.toLocaleString()}</span>
-                <button class="btn-action" onclick="toggleFixedConfirmState(${idx})" title="שנה סטטוס">⇄</button>
-                <button class="btn-action" onclick="editGeneralFixedAmount(${idx})" title="ערוך סכום">✏️</button>
-              </div>
-            </div>
-          `;
-        }
-      });
-
-      document.getElementById('modalBody').innerHTML = html;
-      document.getElementById('modal').style.display = 'flex';
-    }
-
-    function addNewGeneralFixedPrompt() {
-      const name = prompt('הכנס שם לקבועה החדשה (למשל: ספורט, מנוי עיתון):');
-      if (!name) return null;
-      
-      const amountStr = prompt(`הכנס סכום מחדל עבור ${name}:`, '100');
-      const amount = parseFloat(amountStr) || 0;
-      
-      const bankChoice = prompt('לאיזה בנק משויכת הקבועה?\n1: הבינלאומי\n2: Pepper', '1');
-      const bank = bankChoice === '2' ? 'Pepper' : 'International';
-
-      const newItem = {
-        id: 'gf_custom_' + Date.now(),
-        matchKeywords: [name],
-        matchAmount: amount,
-        name: name,
-        defaultAmount: amount,
-        isBimonthly: false,
-        bank: bank,
-        monthlyData: {}
-      };
-
-      appState.generalFixedList.push(newItem);
-      return newItem;
-    }
-
-    function addNewGeneralFixedFromModal() {
-      const newItem = addNewGeneralFixedPrompt();
-      if (newItem) {
-        render();
-        openGeneralFixedModal();
-      }
-    }
-
-    function toggleFixedConfirmState(idx) {
-      const item = appState.generalFixedList[idx];
-      if (!item) return;
-
-      const currentMonthKey = getCurrentMonthKey();
-      if (!item.monthlyData) item.monthlyData = {};
-
-      const currentM = item.monthlyData[currentMonthKey] || { amount: item.defaultAmount, isConfirmed: false };
-      currentM.isConfirmed = !currentM.isConfirmed;
-      item.monthlyData[currentMonthKey] = currentM;
-
-      render();
-      openGeneralFixedModal();
-    }
-
-    function editGeneralFixedAmount(idx) {
-      const item = appState.generalFixedList[idx];
-      if (!item) return;
-
-      const currentMonthKey = getCurrentMonthKey();
-      if (!item.monthlyData) item.monthlyData = {};
-      const currentM = item.monthlyData[currentMonthKey] || { amount: item.defaultAmount, isConfirmed: false };
-
-      const val = prompt(`עדכן סכום עבור ${item.name}:`, currentM.amount);
-      if (val !== null) {
-        currentM.amount = parseFloat(val) || 0;
-        item.monthlyData[currentMonthKey] = currentM;
-        render();
-        openGeneralFixedModal();
-      }
-    }
-
-    function openIncomeModal() {
-      document.getElementById('modalTitle').innerText = "פירוט הכנסות קבועות לפי בנק";
-
-      let html = `
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-          <span style="font-size:13px; font-weight:bold; color:var(--success);">סמן V ליד הכנסה שנכנסה כבר לבנק:</span>
-          <button onclick="addIncomePrompt()" style="font-size:12px; background:#dcfce7; color:#15803d; border:none; padding:6px 12px; border-radius:8px; font-weight:bold; cursor:pointer;">+ הוסף הכנסה</button>
-        </div>
-      `;
-
-      appState.incomesList.forEach((inc) => {
-        const details = getIncomeMonthlyDetails(inc);
-        const bankBadge = inc.bank === 'Pepper' ? `<span class="badge-pepper">Pepper</span>` : `<span class="badge-isra">הבינלאומי</span>`;
-        const statusLabel = details.isConfirmed 
-          ? `<span style="font-size:11px; color:#166534; font-weight:bold;">✓ אושר ונכנס לבנק</span>`
-          : `<span style="font-size:11px; color:#64748b;">⏳ צפוי להיכנס</span>`;
-
-        html += `
-          <div class="income-item-box ${details.isConfirmed ? 'received' : ''}">
-            <div style="display:flex; align-items:center; gap:12px;">
-              <input type="checkbox" class="savings-checkbox" ${details.isConfirmed ? 'checked' : ''} onchange="toggleIncomeStatus('${inc.id}')">
-              <div>
-                <div style="font-weight:bold; font-size:15px; color:#0f172a;">${inc.source} ${bankBadge}</div>
-                <div style="margin-top:2px;">${statusLabel}</div>
-              </div>
-            </div>
-            <div style="display:flex; align-items:center; gap:8px;">
-              <span style="font-weight:bold; font-size:16px; color:var(--success);">₪${details.amount.toLocaleString()}</span>
-              <button class="btn-action" onclick="editIncomeAmount('${inc.id}')" title="ערוך סכום">✏️</button>
-            </div>
-          </div>
-        `;
-      });
-
-      document.getElementById('modalBody').innerHTML = html;
-      document.getElementById('modal').style.display = 'flex';
-    }
-
-    function toggleIncomeStatus(incId) {
-      const inc = appState.incomesList.find(i => i.id === incId);
-      if (!inc) return;
-
-      const currentMonthKey = getCurrentMonthKey();
-      if (!inc.monthlyData) inc.monthlyData = {};
-
-      const currentM = inc.monthlyData[currentMonthKey] || { amount: inc.defaultAmount, isConfirmed: false };
-      currentM.isConfirmed = !currentM.isConfirmed;
-      inc.monthlyData[currentMonthKey] = currentM;
-
-      render();
-      openIncomeModal();
-    }
-
-    function editIncomeAmount(incId) {
-      const inc = appState.incomesList.find(i => i.id === incId);
-      if (!inc) return;
-
-      const currentMonthKey = getCurrentMonthKey();
-      if (!inc.monthlyData) inc.monthlyData = {};
-      const currentM = inc.monthlyData[currentMonthKey] || { amount: inc.defaultAmount, isConfirmed: false };
-
-      const val = prompt(`עדכן סכום הכנסה עבור ${inc.source}:`, currentM.amount);
-      if (val !== null) {
-        currentM.amount = parseFloat(val) || 0;
-        inc.monthlyData[currentMonthKey] = currentM;
-        render();
-        openIncomeModal();
-      }
-    }
-
-    function addIncomePrompt() {
-      const source = prompt('הכנס את מקור ההכנסה:');
-      if (!source) return;
-      const amount = parseFloat(prompt(`הכנס סכום עבור ${source}:`));
-      if (!amount || isNaN(amount)) return;
-
-      const bankChoice = prompt('לאיזה בנק שייכת ההכנסה?\n1: Pepper\n2: הבינלאומי', '2');
-      appState.incomesList.push({
-        id: 'inc_' + Date.now(),
-        source: source,
-        defaultAmount: amount,
-        bank: bankChoice === '1' ? 'Pepper' : 'International',
-        monthlyData: {}
-      });
-
-      render();
-      openIncomeModal();
-    }
-
-    function openSavingsModal() {
-      document.getElementById('modalTitle').innerText = "מעקב חסכונות קבועים";
-      let html = '';
-      appState.savingsList.forEach((s, idx) => {
-        html += `
-          <div class="savings-item ${s.isDone ? 'completed' : ''}">
-            <div style="display:flex; align-items:center; gap:8px;">
-              <input type="checkbox" class="savings-checkbox" ${s.isDone ? 'checked' : ''} onchange="toggleSavingsStatus(${idx})">
-              <span>${s.name} (Pepper)</span>
-            </div>
-            <span style="font-weight:bold;">₪${s.target.toLocaleString()}</span>
-          </div>
-        `;
-      });
-      document.getElementById('modalBody').innerHTML = html;
-      document.getElementById('modal').style.display = 'flex';
-    }
-
-    function toggleSavingsStatus(index) {
-      appState.savingsList[index].isDone = !appState.savingsList[index].isDone;
-      render();
-      openSavingsModal();
-    }
-
-    function addSavingsPrompt() {
-      const name = prompt('שם החיסכון החדש:');
-      if (!name) return;
-      const target = parseFloat(prompt(`הכנס סכום יעד עבור ${name}:`));
-      if (!target || isNaN(target)) return;
-
-      appState.savingsList.push({ id: Date.now(), name: name, target: target, bank: 'Pepper', isDone: false });
-      render();
-      openSavingsModal();
-    }
-
-    function addForecastTxGlobal() {
-      const merchant = prompt('שם ההוצאה הצפויה / בדיקה:');
-      if (!merchant) return;
-      const amount = parseFloat(prompt('סכום צפוי בש"ח:'));
-      if (!amount) return;
-
-      appState.transactions.push({
-        id: Date.now(),
-        envId: appState.envelopes[0] ? appState.envelopes[0].id : 'var_general',
-        merchant: merchant,
-        amount: amount,
-        date: 'צפי חודשי',
-        monthKey: getCurrentMonthKey(),
-        category: 'בדיקה/צפי'
-      });
-
-      render();
-      alert('ההוצאה הצפויה הוספה בהצלחה למשתנות!');
-    }
-
-    function openOverallPieModal() {
-      document.getElementById('modalTitle').innerText = "פילוג הוצאות כללי";
-      document.getElementById('modalBody').innerHTML = `
-        <div style="height:260px; margin-bottom:12px;">
-          <canvas id="overallPieCanvas"></canvas>
-        </div>
-      `;
-      document.getElementById('modal').style.display = 'flex';
-
-      setTimeout(() => {
-        const catTotals = {};
-        appState.transactions.filter(t => isTxInSelectedMonth(t)).forEach(t => {
-          const cat = t.category || 'כללי';
-          catTotals[cat] = (catTotals[cat] || 0) + t.amount;
-        });
-
-        const ctx = document.getElementById('overallPieCanvas').getContext('2d');
-        if (appState.chartInstance) appState.chartInstance.destroy();
-
-        appState.chartInstance = new Chart(ctx, {
-          type: 'pie',
-          data: {
-            labels: Object.keys(catTotals),
-            datasets: [{
-              data: Object.values(catTotals),
-              backgroundColor: ['#2563eb', '#ff007f', '#10b981', '#f59e0b', '#8b5cf6', '#06b6d4', '#ec4899']
-            }]
-          },
-          options: { responsive: true, maintainAspectRatio: false }
-        });
-      }, 100);
-    }
-
-    function openImportModal() {
-      document.getElementById('modalTitle').innerText = "הורדת / טעינת דף מידע";
-
-      const pepperDateText = appState.lastImportDates.Pepper 
-        ? `תאריך קליטה אחרון: ${appState.lastImportDates.Pepper}` 
-        : `טרם נקלט קובץ`;
-
-      const israDateText = appState.lastImportDates.International 
-        ? `תאריך קליטה אחרון: ${appState.lastImportDates.International}` 
-        : `טרם נקלט קובץ`;
-
-      document.getElementById('modalBody').innerHTML = `
-        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:16px;">
-          <div>
-            <a href="https://www.max.co.il/transaction-details/personal" target="_blank" style="padding:10px; text-align:center; background:#f1f5f9; border-radius:8px; text-decoration:none; font-weight:bold; color:#0f172a; display:block;">אתר Pepper ↗</a>
-            <div style="font-size:10px; color:#64748b; text-align:center; margin-top:4px;">${pepperDateText}</div>
-          </div>
-          <div>
-            <a href="https://web.isracard.co.il/transactions" target="_blank" style="padding:10px; text-align:center; background:#f1f5f9; border-radius:8px; text-decoration:none; font-weight:bold; color:#0f172a; display:block;">אתר הבינלאומי ↗</a>
-            <div style="font-size:10px; color:#64748b; text-align:center; margin-top:4px;">${israDateText}</div>
-          </div>
-        </div>
-        <p style="font-size:13px; color:#64748b; margin-bottom:8px;">בחר קובץ אקסל שירד מהאתר:</p>
-        <input type="file" id="excelFile" accept=".xlsx, .xls" style="width:100%; margin-bottom:12px;">
-        <button onclick="processExcelSmart()" style="width:100%; padding:12px; background:#2563eb; color:#fff; border:none; border-radius:8px; font-weight:bold; cursor:pointer;">סרוק עסקאות בקובץ</button>
-      `;
-      document.getElementById('modal').style.display = 'flex';
-    }
-
-    function closeModal() { 
-      document.getElementById('modal').style.display = 'none'; 
-      if (appState.chartInstance) { appState.chartInstance.destroy(); appState.chartInstance = null; }
-    }
-
-    // Attach to Window Scope
-    window.render = render;
-    window.navigateMonth = navigateMonth;
-    window.openMonthPickerModal = openMonthPickerModal;
-    window.selectMonthFromModal = selectMonthFromModal;
-    window.jumpToCurrentMonth = jumpToCurrentMonth;
-    window.openAddEnvelopeModal = openAddEnvelopeModal;
-    window.submitNewEnvelope = submitNewEnvelope;
-    window.openEditEnvelopeModal = openEditEnvelopeModal;
-    window.saveEnvelopeEdit = saveEnvelopeEdit;
-    window.deleteEnvelope = deleteEnvelope;
-    window.openBudgetTransferModal = openBudgetTransferModal;
-    window.executeBudgetTransfer = executeBudgetTransfer;
-    window.openNetBalanceModal = openNetBalanceModal;
-    window.openTransferForecastModal = openTransferForecastModal;
-    window.openConfirmDirectDebitModal = openConfirmDirectDebitModal;
-    window.saveDirectDebitConfirmation = saveDirectDebitConfirmation;
-    window.addDirectDebitPrompt = addDirectDebitPrompt;
-    window.openHoaModal = openHoaModal;
-    window.submitHoaPayment = submitHoaPayment;
-    window.openCashModal = openCashModal;
-    window.openAddCashModal = openAddCashModal;
-    window.toggleCashFeeVisibility = toggleCashFeeVisibility;
-    window.submitNewCashWithdrawal = submitNewCashWithdrawal;
-    window.toggleCashWithdrawalStatus = toggleCashWithdrawalStatus;
-    window.removeCashWithdrawal = removeCashWithdrawal;
-    window.exportCustomExcelWorkbook = exportCustomExcelWorkbook;
-    window.exportPDFReport = exportPDFReport;
-    window.processExcelSmart = processExcelSmart;
-    window.renderPreviewModal = renderPreviewModal;
-    window.changePendingTxEnv = changePendingTxEnv;
-    window.confirmPendingTxFixedSelection = confirmPendingTxFixedSelection;
-    window.createAndSelectNewFixedPending = createAndSelectNewFixedPending;
-    window.removePendingTx = removePendingTx;
-    window.confirmImport = confirmImport;
-    window.openEnvModal = openEnvModal;
-    window.editTxCategory = editTxCategory;
-    window.moveTxEnvelopePrompt = moveTxEnvelopePrompt;
-    window.executeMoveTxToEnv = executeMoveTxToEnv;
-    window.assignTxToFixedModal = assignTxToFixedModal;
-    window.confirmMoveTxToFixed = confirmMoveTxToFixed;
-    window.createNewFixedFromTx = createNewFixedFromTx;
-    window.deleteTx = deleteTx;
-    window.openGeneralFixedModal = openGeneralFixedModal;
-    window.addNewGeneralFixedFromModal = addNewGeneralFixedFromModal;
-    window.toggleFixedConfirmState = toggleFixedConfirmState;
-    window.editGeneralFixedAmount = editGeneralFixedAmount;
-    window.openIncomeModal = openIncomeModal;
-    window.toggleIncomeStatus = toggleIncomeStatus;
-    window.editIncomeAmount = editIncomeAmount;
-    window.addIncomePrompt = addIncomePrompt;
-    window.openSavingsModal = openSavingsModal;
-    window.toggleSavingsStatus = toggleSavingsStatus;
-    window.addSavingsPrompt = addSavingsPrompt;
-    window.addForecastTxGlobal = addForecastTxGlobal;
-    window.openOverallPieModal = openOverallPieModal;
-    window.openImportModal = openImportModal;
-    window.closeModal = closeModal;
-
-    render();
-  </script>
-</body>
-</html>
+        <p style="font-size:13px; color:#64748b; margin-bottom:10px;">בחר לאיזו קבועה לשייך

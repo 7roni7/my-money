@@ -1160,7 +1160,7 @@
         totalDirectDebits += mData.amount;
         ddRowsHtml += `
           <div class="net-breakdown-row">
-            <span>🔹 ${dd.name} (הוראת קבע עו"ש)</span>
+            <span>🔹 ${dd.name} (הוראת קבע בעו"ש)</span>
             <span style="font-weight:bold; color:#991b1b;">-₪${mData.amount.toLocaleString()}</span>
           </div>
         `;
@@ -1651,7 +1651,7 @@
       const netResultActual = incomes.confirmedIncome - totalExpenses;
 
       const summaryData = [
-        ["דוח ריכוז תקציב ומאזן חודשי", "", monthYearStr],
+        ["דוח ריכז תקציב ומאזן חודשי", "", monthYearStr],
         [],
         ["תחום / קטגוריה", "סכום כולל (ש\"ח)", "הערות / סטטוס"],
         ["הכנסות שאושר שהתקבלו בפועל", incomes.confirmedIncome, `צפי מתוכנן מלא: ₪${incomes.projectedIncome.toLocaleString()}`],
@@ -3026,7 +3026,7 @@
     window.renderPreviewModal = renderPreviewModal;
     window.changePendingTxEnv = changePendingTxEnv;
     window.confirmPendingTxFixedSelection = confirmPendingTxFixedSelection;
-    window.createAndSelectNewFixedPending = createAndSelectNewFixedPending;
+    window.createAndSelectNewFixedPending.createAndSelectNewFixedPending = createAndSelectNewFixedPending;
     window.removePendingTx = removePendingTx;
     window.confirmImport = confirmImport;
     window.openEnvModal = openEnvModal;

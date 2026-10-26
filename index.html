@@ -184,7 +184,6 @@
     .modal-content { background: #fff; width: 100%; max-width: 520px; max-height: 85vh; border-radius: 20px; padding: 20px; overflow-y: auto; position: relative; }
     .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
     
-    /* Sticky Close-X Button */
     .close-x-floating {
       position: sticky;
       top: 0;
@@ -209,7 +208,7 @@
     
     .badge-pepper { font-size: 10px; background: var(--pepper-pink); color: #ffffff; padding: 2px 8px; border-radius: 6px; font-weight: bold; display: inline-block; box-shadow: 0 0 8px rgba(255, 0, 127, 0.3); }
     .badge-isra { font-size: 10px; background: #3b82f6; color: #ffffff; padding: 2px 8px; border-radius: 6px; font-weight: bold; display: inline-block; }
-    .badge-inst { font-size: 10px; background: #8b5cf6; color: #ffffff; padding: 2px 8px; border-radius: 6px; font-weight: bold; display: inline-block; }
+    .badge-inst { font-size: 11px; background: #8b5cf6; color: #ffffff; padding: 3px 8px; border-radius: 6px; font-weight: bold; display: inline-block; box-shadow: 0 2px 6px rgba(139, 92, 246, 0.3); }
     
     .select-env-preview { font-size: 11px; font-weight: bold; padding: 4px 6px; border-radius: 6px; border: 1px solid #cbd5e1; background: #fff; cursor: pointer; outline: none; }
 
@@ -505,6 +504,7 @@
           if (data && data.appState) {
             isRemoteUpdate = true;
             window.appState = Object.assign(window.appState, data.appState);
+            window.syncAllInstallmentSeries();
             window.render();
             isRemoteUpdate = false;
           }
@@ -638,12 +638,12 @@
           year = parseInt(parts[0], 10);
           month = parseInt(parts[1], 10);
           day = parseInt(parts[2], 10);
-        } else { // DD-MM-YYYY או DD-MM-YY
+        } else { // DD-MM-YYYY
           day = parseInt(parts[0], 10);
           month = parseInt(parts[1], 10);
           year = parseInt(parts[2], 10);
         }
-      } else if (parts.length === 2) { // MM/YYYY
+      } else if (parts.length === 2) {
         month = parseInt(parts[0], 10);
         year = parseInt(parts[1], 10);
         day = 1;
@@ -669,6 +669,70 @@
       }
 
       return false;
+    }
+
+    function generateInstallmentSeries(baseTx) {
+      if (!baseTx.installmentTotal || baseTx.installmentTotal <= 1) return;
+
+      const parsed = parseTxDate(baseTx.date);
+      let startDay = parsed ? parsed.day : 2;
+      let startMonth = parsed ? parsed.month : appState.selectedMonth;
+      let startYear = parsed ? parsed.year : appState.selectedYear;
+      let currentInstNum = baseTx.installmentCurrent || 1;
+
+      for (let i = 1; i <= baseTx.installmentTotal; i++) {
+        if (i === currentInstNum) continue;
+
+        let futMonth = startMonth + (i - currentInstNum);
+        let futYear = startYear;
+        while (futMonth > 12) {
+          futMonth -= 12;
+          futYear += 1;
+        }
+        while (futMonth < 1) {
+          futMonth += 12;
+          futYear -= 1;
+        }
+
+        const futMonthKey = `${futYear}-${String(futMonth).padStart(2, '0')}`;
+        const futDateStr = `${String(startDay).padStart(2, '0')}/${String(futMonth).padStart(2, '0')}/${futYear}`;
+
+        const exists = appState.transactions.some(t => 
+          t.merchant === baseTx.merchant && 
+          Math.abs(t.amount - baseTx.amount) < 0.01 && 
+          t.installmentCurrent === i && 
+          t.installmentTotal === baseTx.installmentTotal && 
+          t.monthKey === futMonthKey
+        );
+
+        if (!exists) {
+          appState.transactions.push({
+            id: Date.now() + Math.random(),
+            envId: baseTx.envId || baseTx.envelopeId || 'var_general',
+            envelopeId: baseTx.envelopeId || baseTx.envId || 'var_general',
+            merchant: baseTx.merchant,
+            category: baseTx.category,
+            amount: baseTx.amount,
+            date: futDateStr,
+            monthKey: futMonthKey,
+            isPepper: baseTx.isPepper,
+            source: baseTx.source,
+            installmentCurrent: i,
+            installmentTotal: baseTx.installmentTotal,
+            note: baseTx.note || ''
+          });
+        }
+      }
+    }
+
+    // סריקת כל העסקאות בזיכרון והשלמת חיובי המשך אם חסרים
+    function syncAllInstallmentSeries() {
+      const snap = [...appState.transactions];
+      snap.forEach(t => {
+        if (t.installmentTotal && t.installmentTotal > 1) {
+          generateInstallmentSeries(t);
+        }
+      });
     }
 
     function navigateMonth(direction) {
@@ -947,6 +1011,7 @@
     }
 
     function render() {
+      syncAllInstallmentSeries();
       updateHeaderDisplay();
       const searchQuery = document.getElementById('globalSearchInput').value.trim().toLowerCase();
       const currentMonthKey = getCurrentMonthKey();
@@ -1838,7 +1903,7 @@
                 const envId = t.envId || t.envelopeId;
                 const envObj = appState.envelopes.find(e => e.id === envId);
                 const envName = envObj ? envObj.name : (envId === 'var_other' ? 'שונות (חיסכון - מוחרג)' : 'משתנות');
-                const instText = (t.installmentTotal && t.installmentTotal > 1) ? ` (תשלום ${t.installmentCurrent}/${t.installmentTotal})` : '';
+                const instText = (t.installmentTotal && t.installmentTotal > 1) ? ` (💳 ${t.installmentCurrent} מתוך ${t.installmentTotal})` : '';
                 return `<tr><td>${t.merchant}${instText}</td><td>${envName}</td><td>${t.date || ''}</td><td>${t.isPepper ? 'Pepper' : 'הבינלאומי'}</td><td><b>₪${t.amount.toLocaleString()}</b></td></tr>`;
               }).join('')}
               <tr style="background:#eff6ff; font-weight:bold; border-top:2px solid #2563eb;">
@@ -1921,61 +1986,6 @@
       html2pdf().set(opt).from(container).save().then(() => {
         container.style.display = 'none';
       });
-    }
-
-    // תכונה 1: מייצר אוטומטית עסקאות המשך לחודשים הבאים ולחודשים קודמים במידה ומדובר בעסקת תשלומים
-    function generateInstallmentSeries(baseTx) {
-      if (!baseTx.installmentTotal || baseTx.installmentTotal <= 1) return;
-
-      const parsed = parseTxDate(baseTx.date);
-      let startDay = parsed ? parsed.day : 2;
-      let startMonth = parsed ? parsed.month : appState.selectedMonth;
-      let startYear = parsed ? parsed.year : appState.selectedYear;
-      let currentInstNum = baseTx.installmentCurrent || 1;
-
-      for (let i = 1; i <= baseTx.installmentTotal; i++) {
-        if (i === currentInstNum) continue;
-
-        let futMonth = startMonth + (i - currentInstNum);
-        let futYear = startYear;
-        while (futMonth > 12) {
-          futMonth -= 12;
-          futYear += 1;
-        }
-        while (futMonth < 1) {
-          futMonth += 12;
-          futYear -= 1;
-        }
-
-        const futMonthKey = `${futYear}-${String(futMonth).padStart(2, '0')}`;
-        const futDateStr = `${String(startDay).padStart(2, '0')}/${String(futMonth).padStart(2, '0')}/${futYear}`;
-
-        const exists = appState.transactions.some(t => 
-          t.merchant === baseTx.merchant && 
-          Math.abs(t.amount - baseTx.amount) < 0.01 && 
-          t.installmentCurrent === i && 
-          t.installmentTotal === baseTx.installmentTotal && 
-          t.monthKey === futMonthKey
-        );
-
-        if (!exists) {
-          appState.transactions.push({
-            id: Date.now() + Math.random(),
-            envId: baseTx.envId || baseTx.envelopeId || 'var_general',
-            envelopeId: baseTx.envelopeId || baseTx.envId || 'var_general',
-            merchant: baseTx.merchant,
-            category: baseTx.category,
-            amount: baseTx.amount,
-            date: futDateStr,
-            monthKey: futMonthKey,
-            isPepper: baseTx.isPepper,
-            source: baseTx.source,
-            installmentCurrent: i,
-            installmentTotal: baseTx.installmentTotal,
-            note: baseTx.note || ''
-          });
-        }
-      }
     }
 
     function processExcelSmart() {
@@ -2426,7 +2436,7 @@
         txs = txs.filter(t => t.category === appState.activeCategoryFilter);
       }
 
-      // מיון העסקאות: החיוב הכי אחרון מופיע ראשון למעלה, ותחילת החודש מופיעה בתחתית
+      // מיון: הכי אחרון (הגבוה ביותר בתאריך) יופיע בראש הרשימה, והקודם ביותר בתחתית
       txs.sort((a, b) => {
         const valA = getTxSortValue(a);
         const valB = getTxSortValue(b);
@@ -2888,6 +2898,16 @@
           <label style="font-size:13px; font-weight:bold; color:#64748b; display:block; margin-bottom:6px;">סכום צפוי (בש"ח):</label>
           <input type="number" id="forecastAmountInput" class="search-input" placeholder="למשל: 350">
         </div>
+        <div style="margin-bottom:12px; display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+          <div>
+            <label style="font-size:13px; font-weight:bold; color:#64748b; display:block; margin-bottom:6px;">תשלום נוכחי:</label>
+            <input type="number" id="forecastInstCurrentInput" class="search-input" value="1" min="1">
+          </div>
+          <div>
+            <label style="font-size:13px; font-weight:bold; color:#64748b; display:block; margin-bottom:6px;">סה"כ תשלומים:</label>
+            <input type="number" id="forecastInstTotalInput" class="search-input" value="1" min="1">
+          </div>
+        </div>
         <div style="margin-bottom:16px;">
           <label style="font-size:13px; font-weight:bold; color:#64748b; display:block; margin-bottom:6px;">בחר מעטפה יעד:</label>
           <select id="forecastEnvelopeSelect" class="search-input" style="font-weight:bold;">
@@ -2905,25 +2925,34 @@
       const merchant = document.getElementById('forecastMerchantInput').value.trim();
       const amount = parseFloat(document.getElementById('forecastAmountInput').value);
       const envId = document.getElementById('forecastEnvelopeSelect').value;
+      const instCurrent = parseInt(document.getElementById('forecastInstCurrentInput').value) || 1;
+      const instTotal = parseInt(document.getElementById('forecastInstTotalInput').value) || 1;
 
       if (!merchant) return alert('אנא הזן תיאור להוצאה.');
       if (isNaN(amount) || amount <= 0) return alert('אנא הזן סכום תקין.');
 
-      appState.transactions.push({
+      const newTx = {
         id: Date.now(),
         envId: envId,
         envelopeId: envId,
         merchant: merchant,
         amount: amount,
-        date: 'צפי חודשי',
+        date: new Date().toLocaleDateString('he-IL'),
         monthKey: getCurrentMonthKey(),
         category: 'בדיקה/צפי',
+        installmentCurrent: instCurrent,
+        installmentTotal: instTotal,
         note: ''
-      });
+      };
+
+      appState.transactions.push(newTx);
+      if (instTotal > 1) {
+        generateInstallmentSeries(newTx);
+      }
 
       closeModal();
       render();
-      alert('ההוצאה הצפויה הוספה בהצלחה למעטפה שנבחרה!');
+      alert('ההוצאה הוספה בהצלחה למעטפה שנבחרה!');
     }
 
     function openOverallPieModal() {
@@ -2996,6 +3025,7 @@
 
     // Attach to Window Scope
     window.render = render;
+    window.syncAllInstallmentSeries = syncAllInstallmentSeries;
     window.navigateMonth = navigateMonth;
     window.openMonthPickerModal = openMonthPickerModal;
     window.selectMonthFromModal = selectMonthFromModal;
@@ -3026,7 +3056,7 @@
     window.renderPreviewModal = renderPreviewModal;
     window.changePendingTxEnv = changePendingTxEnv;
     window.confirmPendingTxFixedSelection = confirmPendingTxFixedSelection;
-    window.createAndSelectNewFixedPending.createAndSelectNewFixedPending = createAndSelectNewFixedPending;
+    window.createAndSelectNewFixedPending = createAndSelectNewFixedPending;
     window.removePendingTx = removePendingTx;
     window.confirmImport = confirmImport;
     window.openEnvModal = openEnvModal;

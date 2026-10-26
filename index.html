@@ -2645,5 +2645,5 @@
 
     render();
   </script>
-</body>
+<script>   // דריסה בטוחה להחרגת מעטפת שונות מחישובי הנטו   const origIsTx = window.isTxInSelectedMonth;   if (typeof origIsTx === 'function') {     window.isTxInSelectedMonth = function(t) {       if (t && t.envelopeId === 'var_other') return false;       return origIsTx(t);     };   } </script> </body>
 </html>

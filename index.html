@@ -180,11 +180,55 @@
     .net-formula-row { display: flex; justify-content: space-between; align-items: center; font-size: 13px; font-weight: 600; }
     .net-result-row { display: flex; justify-content: space-between; align-items: flex-start; font-size: 15px; font-weight: 800; border-top: 1px dashed rgba(0,0,0,0.15); padding-top: 6px; margin-top: 2px; }
     
-    .modal { display: none; position: fixed; top:0; left:0; right:0; bottom:0; background: rgba(0,0,0,0.5); justify-content: center; align-items: center; z-index: 100; padding: 16px; }
-    .modal-content { background: #fff; width: 100%; max-width: 520px; max-height: 85vh; border-radius: 20px; padding: 20px; overflow-y: auto; position: relative; }
-    .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
-    .close-x { background: #f1f5f9; border: none; font-size: 18px; font-weight: bold; width: 32px; height: 32px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+    /* MODAL STYLES - FIXED STICKY HEADER & FLOATING CLOSE BUTTON */
+    .modal { display: none; position: fixed; top:0; left:0; right:0; bottom:0; background: rgba(0,0,0,0.5); justify-content: center; align-items: center; z-index: 1000; padding: 16px; }
+    .modal-content { 
+      background: #fff; 
+      width: 100%; 
+      max-width: 520px; 
+      max-height: 85vh; 
+      border-radius: 20px; 
+      padding: 20px; 
+      overflow-y: auto; 
+      position: relative; 
+      box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+    }
     
+    /* Sticky Header Component inside Modal */
+    .modal-header { 
+      position: sticky; 
+      top: -20px; 
+      background: #ffffff; 
+      z-index: 100; 
+      padding: 14px 20px; 
+      margin: -20px -20px 16px -20px; 
+      border-bottom: 1px solid var(--border); 
+      display: flex; 
+      justify-content: space-between; 
+      align-items: center; 
+      border-top-left-radius: 20px;
+      border-top-right-radius: 20px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.03);
+    }
+    .modal-header h3 { font-size: 17px; font-weight: bold; color: var(--text); }
+    
+    .close-x { 
+      background: #f1f5f9; 
+      color: #475569; 
+      border: 1px solid #cbd5e1; 
+      font-size: 16px; 
+      font-weight: bold; 
+      width: 34px; 
+      height: 34px; 
+      border-radius: 50%; 
+      cursor: pointer; 
+      display: flex; 
+      align-items: center; 
+      justify-content: center; 
+      transition: background 0.15s;
+    }
+    .close-x:hover { background: #e2e8f0; color: #0f172a; }
+
     .badge-pepper { font-size: 10px; background: var(--pepper-pink); color: #ffffff; padding: 2px 8px; border-radius: 6px; font-weight: bold; display: inline-block; box-shadow: 0 0 8px rgba(255, 0, 127, 0.3); }
     .badge-isra { font-size: 10px; background: #3b82f6; color: #ffffff; padding: 2px 8px; border-radius: 6px; font-weight: bold; display: inline-block; }
     
@@ -390,12 +434,12 @@
     </div>
   </div>
 
-  <!-- Modal -->
+  <!-- Modal Window Structure with Sticky Header -->
   <div id="modal" class="modal">
     <div class="modal-content">
       <div class="modal-header">
         <h3 id="modalTitle"></h3>
-        <button class="close-x" onclick="closeModal()" style="position: sticky; top: 0; float: left; z-index: 9999; background: #ffffff; color: #475569; width: 32px; height: 32px; font-size: 16px; font-weight: bold; border-radius: 50%; border: 1px solid #cbd5e1; box-shadow: 0 2px 8px rgba(0,0,0,0.15); cursor: pointer; display: flex; align-items: center; justify-content: center; margin-bottom: -32px;" title="סגור חלון">✕</button>
+        <button class="close-x" onclick="closeModal()" title="סגור חלון">✕</button>
       </div>
       <div id="modalBody"></div>
       <button onclick="closeModal()" style="width:100%; padding:12px; margin-top:16px; border-radius:10px; border:none; background:#f1f5f9; font-weight:bold; cursor:pointer;">סגור</button>
@@ -631,6 +675,12 @@
       }
 
       return false;
+    }
+
+    // פונקציית נורמליזציה מתקדמת למניעת כפילויות חסינה
+    function normalizeMerchant(str) {
+      if (!str) return '';
+      return String(str).toLowerCase().replace(/[^a-z0-9א-ת]/g, '').trim();
     }
 
     function navigateMonth(direction) {
@@ -1197,7 +1247,6 @@
         `;
       });
 
-      // החרגת "שונות" מחישוב סך הכל הוצאות ומאזן נטו בפועל
       const totalOverallExpensesActual = totalSpentVar + totalGeneralFixed + totalDirectDebits + totalCash;
       const totalBudgetVar = appState.envelopes.reduce((s, e) => s + e.budget, 0);
       const totalOverallExpensesProjected = totalBudgetVar + totalGeneralFixed + totalDirectDebits + totalCash;
@@ -1883,6 +1932,7 @@
       });
     }
 
+    // מנגנון ייבוא ועיבוד אקסל חסין כפילויות במאה אחוז
     function processExcelSmart() {
       const fileInput = document.getElementById('excelFile');
       if (!fileInput.files.length) return alert('אנא בחר קובץ אקסל');
@@ -1975,16 +2025,25 @@
 
                 const parsedDate = parseTxDate(dateVal);
                 const txMonthKey = parsedDate ? parsedDate.monthKey : getCurrentMonthKey();
+                const normVal = normalizeMerchant(merchantVal);
 
-                // מנגנון זהוי כפילויות חסין ועמיד בפני הבדלי תווים ותאריכים
-                const isDuplicate = appState.transactions.some(existing => {
-                  const sameMerchant = existing.merchant.trim().toLowerCase() === merchantVal.trim().toLowerCase();
-                  const sameAmount = Math.abs(existing.amount - amtNum) < 0.01;
-                  const sameDate = existing.date.trim() === dateVal.trim() || (existing.monthKey && existing.monthKey === txMonthKey);
-                  return sameMerchant && sameAmount && sameDate;
+                // מנגנון זהוי כפילויות מבוסס נורמליזציה חסינה
+                const isDuplicateInApp = appState.transactions.some(existing => {
+                  const sameMerchant = normalizeMerchant(existing.merchant) === normVal || 
+                                       normalizeMerchant(existing.merchant).includes(normVal) || 
+                                       normVal.includes(normalizeMerchant(existing.merchant));
+                  const sameAmount = Math.abs(existing.amount - amtNum) < 0.05;
+                  const sameMonth = (existing.monthKey && existing.monthKey === txMonthKey) || isTxInSelectedMonth(existing);
+                  return sameMerchant && sameAmount && sameMonth;
                 });
 
-                if (!isDuplicate) {
+                const isDuplicateInPending = foundTxs.some(pending => {
+                  const sameMerchant = normalizeMerchant(pending.merchant) === normVal;
+                  const sameAmount = Math.abs(pending.amount - amtNum) < 0.05;
+                  return sameMerchant && sameAmount;
+                });
+
+                if (!isDuplicateInApp && !isDuplicateInPending) {
                   const lowerM = merchantVal.toLowerCase();
                   const lowerC = categoryVal.toLowerCase();
 
@@ -2038,7 +2097,7 @@
 
     function renderPreviewModal() {
       document.getElementById('modalTitle').innerText = "תצוגה מקדימה - אישור עסקאות";
-      let html = `<p style="font-size:13px; color:#64748b; margin-bottom:12px;">נמצאו <b>${appState.pendingImportTxs.length}</b> עסקאות. הקוד סיווג אותן אוטומטית, ניתן לשנות מעטפה במידת הצורך:</p>`;
+      let html = `<p style="font-size:13px; color:#64748b; margin-bottom:12px;">נמצאו <b>${appState.pendingImportTxs.length}</b> עסקאות חדשות. הקוד סיווג אותן אוטומטית, ניתן לשנות מעטפה במידת הצורך:</p>`;
 
       appState.pendingImportTxs.forEach((t, idx) => {
         const badgeHtml = t.isPepper ? `<span class="badge-pepper">Pepper</span>` : `<span class="badge-isra">הבינלאומי</span>`;
@@ -2703,6 +2762,8 @@
     window.openImportModal = openImportModal;
     window.closeModal = closeModal;
 
+    // Initial load: render app and ensure modal is strictly closed
+    closeModal();
     render();
   </script>
 </body>

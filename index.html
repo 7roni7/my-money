@@ -6,686 +6,464 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>ניהול מעטפות - רוני ובתאל</title>
   
-  <!-- External Libraries (CDNs) -->
+  <!-- External Libraries -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <script src="https://cdn.tailwindcss.com"></script>
   
-  <!-- React & Firebase Scripts -->
+  <!-- React & Firebase CDNs -->
   <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   
+  <!-- Firebase App & Firestore -->
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Assistant:wght@300;400;600;700;800&display=swap');
     
+    :root {
+      --bg: #f8fafc;
+      --card-bg: #ffffff;
+      --primary: #2563eb;
+      --primary-soft: #eff6ff;
+      --text: #0f172a;
+      --text-muted: #64748b;
+      --danger: #ef4444;
+      --warning: #f59e0b;
+      --success: #10b981;
+      --purple: #8b5cf6;
+    }
+
     * {
       font-family: 'Assistant', sans-serif;
       box-sizing: border-box;
+      margin: 0;
+      padding: 0;
     }
+
     body {
-      background-color: #f8fafc;
-      color: #0f172a;
+      background-color: var(--bg);
+      color: var(--text);
       direction: rtl;
+      padding: 16px;
+      max-width: 800px;
+      margin: 0 auto;
+      min-height: 100vh;
     }
+
+    /* Modal Backdrop & X Button Fix */
     .modal-backdrop {
-      background-color: rgba(15, 23, 42, 0.6);
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(15, 23, 42, 0.6);
       backdrop-filter: blur(4px);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 1000;
+      padding: 16px;
     }
-    .pdf-export-container * {
-      letter-spacing: normal !important;
-      word-spacing: normal !important;
+
+    .modal-content {
+      background: #ffffff;
+      border-radius: 20px;
+      width: 100%;
+      max-width: 600px;
+      max-height: 90vh;
+      overflow-y: auto;
+      position: relative;
+      padding: 24px;
+      box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
     }
-    /* Custom Scrollbars */
-    ::-webkit-scrollbar {
-      width: 6px;
-      height: 6px;
+
+    .close-btn-fixed {
+      position: absolute;
+      top: 16px;
+      left: 16px;
+      background: #f1f5f9;
+      border: none;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      font-weight: bold;
+      color: #64748b;
+      font-size: 18px;
+      transition: all 0.2s;
+      z-index: 10;
     }
-    ::-webkit-scrollbar-thumb {
-      background: #cbd5e1;
-      border-radius: 4px;
+
+    .close-btn-fixed:hover {
+      background: #e2e8f0;
+      color: #0f172a;
+    }
+
+    /* Badge Style for Installments */
+    .badge-purple {
+      background-color: #f3e8ff;
+      color: #6b21a8;
+      border: 1px solid #d8b4fe;
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 700;
+      display: inline-block;
+    }
+
+    .card {
+      background: white;
+      border-radius: 16px;
+      padding: 20px;
+      margin-bottom: 16px;
+      box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
+    }
+
+    .btn {
+      border: none;
+      padding: 10px 18px;
+      border-radius: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      transition: opacity 0.2s;
+    }
+    
+    .btn:active { opacity: 0.8; }
+    .btn-primary { background: #2563eb; color: white; }
+    .btn-success { background: #10b981; color: white; }
+    .btn-warning { background: #f59e0b; color: white; }
+    .btn-danger { background: #ef4444; color: white; }
+    .btn-purple { background: #8b5cf6; color: white; }
+
+    input, select {
+      width: 100%;
+      padding: 10px 14px;
+      border: 1px solid #cbd5e1;
+      border-radius: 10px;
+      font-size: 15px;
+      margin-top: 4px;
+      margin-bottom: 12px;
+    }
+
+    .export-menu {
+      position: absolute;
+      top: 100%;
+      right: 0;
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1);
+      padding: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      z-index: 50;
+      min-width: 160px;
     }
   </style>
 </head>
 <body>
+  <div id="root"></div>
 
-<div id="root"></div>
+  <script type="text/babel">
+    const { useState, useEffect, useRef } = React;
 
-<!-- MAIN APPLICATION LOGIC -->
-<script type="text/babel">
-  const { useState, useEffect, useMemo, useRef } = React;
+    // Firebase Config (Replace with your operational credentials if required)
+    const firebaseConfig = {
+      apiKey: "AIzaSyDummyKeyForBudgetApp",
+      authDomain: "my-money-app.firebaseapp.com",
+      projectId: "my-money-app",
+      storageBucket: "my-money-app.appspot.com",
+      messagingSenderId: "123456789",
+      appId: "1:123456789:web:abcdef"
+    };
 
-  // Global Categories Options
-  const DEFAULT_CATEGORIES = [
-    "מזון וסופר", "חשמל ומחשבים", "קוסמטיקה וטיפוח", "מסעדות ובתי קפה", 
-    "דלק ותחבורה", "קניות לבית", "בריאות ורפואה", "ילדים וחינוך", "ביגוד והנעלה", "שונות"
-  ];
-
-  // Helper: Extract Installments from Merchant or Text
-  function parseInstallmentData(rawText, rawAmount) {
-    if (!rawText) return { isInstallment: false, current: 1, total: 1 };
-    
-    const text = String(rawText);
-    // Pattern 1: תשלום X מתוך Y or X/Y
-    const match1 = text.match(/(?:תשלום|ת'|תש')?\s*(\d{1,2})\s*(?:מתוך|\/|-)\s*(\d{1,2})/i);
-    if (match1) {
-      const current = parseInt(match1[1], 10);
-      const total = parseInt(match1[2], 10);
-      if (total > 1 && current <= total) {
-        return { isInstallment: true, current, total };
-      }
+    if (!firebase.apps.length) {
+      firebase.initializeApp(firebaseConfig);
     }
-    return { isInstallment: false, current: 1, total: 1 };
-  }
+    const db = firebase.firestore();
 
-  // Helper: Format Currency
-  function formatILS(val) {
-    return new Intl.NumberFormat('he-IL', { style: 'currency', currency: 'ILS', maximumFractionDigits: 0 }).format(val || 0);
-  }
-
-  function App() {
-    // Current Active Month/Year State
-    const [currentDate, setCurrentDate] = useState(() => {
-      const now = new Date();
-      return { year: now.getFullYear(), month: now.getMonth() + 1 };
-    });
-
-    const currentYM = `${currentDate.year}-${String(currentDate.month).padStart(2, '0')}`;
-
-    // App Main States
-    const [user, setUser] = useState({ name: "רוני ורלי", email: "7roni7@gmail.com" });
-    const [envelopes, setEnvelopes] = useState([
-      { id: "e1", name: "משתנות", budget: 5500, isSavings: false },
-      { id: "e2", name: "בלת\"ם", budget: 4300, isSavings: false },
-      { id: "e3", name: "שונות (חיוב מחיסכון)", budget: 3000, isSavings: true },
-      { id: "e4", name: "אירועים ובילויים", budget: 1500, isSavings: false }
-    ]);
-
-    const [transactions, setTransactions] = useState([
-      {
-        id: "t1",
-        merchant: "POTENAM",
-        amount: 490,
-        date: "2026-10-22",
-        envelopeId: "e1",
-        category: "קוסמטיקה וטיפוח",
-        note: "טיפול פנים",
-        yearMonth: "2026-10",
-        isInstallment: true,
-        currentInstallment: 1,
-        totalInstallments: 2,
-        card: "Pepper"
-      },
-      {
-        id: "t2",
-        merchant: "מקס רחובות בע\"מ",
-        amount: 37.7,
-        date: "2026-10-23",
-        envelopeId: "e1",
-        category: "חשמל ומחשבים",
-        note: "",
-        yearMonth: "2026-10",
-        isInstallment: false,
-        currentInstallment: 1,
-        totalInstallments: 1,
-        card: "Pepper"
-      },
-      {
-        id: "t3",
-        merchant: "ד\"ר שאלתיאל",
-        amount: 850,
-        date: "2026-10-15",
-        envelopeId: "e3",
-        category: "בריאות ורפואה",
-        note: "טיפול שיניים חירום",
-        yearMonth: "2026-10",
-        isInstallment: true,
-        currentInstallment: 1,
-        totalInstallments: 3,
-        card: "מקס"
+    // Helper: Extract Installment Data (e.g., POTENAM 01/02)
+    function parseInstallment(desc) {
+      if (!desc) return null;
+      const regex = /(?:תשלום|עסקה)?\s*(\d{1,2})\s*(?:מתוך|\/|-)\s*(\d{1,2})/i;
+      const match = desc.match(regex);
+      if (match) {
+        return {
+          current: parseInt(match[1]),
+          total: parseInt(match[2])
+        };
       }
-    ]);
+      return null;
+    }
 
-    const [income, setIncome] = useState(20000);
-    const [selectedEnvelope, setSelectedEnvelope] = useState(null);
-    const [showExportModal, setShowExportModal] = useState(false);
-    const [showForecastModal, setShowForecastModal] = useState(false);
-    const [searchTerm, setSearchTerm] = useState("");
-    const [showChartModal, setShowChartModal] = useState(false);
-
-    // New Transaction Form State for Manual Add / Forecast
-    const [forecastForm, setForecastForm] = useState({
-      merchant: "",
-      amount: "",
-      envelopeId: "e1",
-      category: "משתנות",
-      note: "",
-      date: new Date().toISOString().split('T')[0]
-    });
-
-    // 13. Auto-Forecast Generation for Future Installments
-    const allFilteredTransactions = useMemo(() => {
-      let result = [...transactions];
+    function App() {
+      const [currentMonth, setCurrentMonth] = useState("2026-10");
+      const [envelopes, setEnvelopes] = useState([
+        { id: "var", name: "משתנות", budget: 5500, isShonot: false },
+        { id: "unforeseen", name: "בלת\"מים", budget: 4300, isShonot: false },
+        { id: "events", name: "אירועים וביקורים", budget: 1500, isShonot: false },
+        { id: "shonot", name: "שונות (חיוב מחיסכון)", budget: 3000, isShonot: true }
+      ]);
+      const [transactions, setTransactions] = useState([]);
+      const [activeEnvelope, setActiveEnvelope] = useState(null);
+      const [showPieChart, setShowPieChart] = useState(false);
+      const [showExportMenu, setShowExportMenu] = useState(false);
+      const [showForecastModal, setShowForecastModal] = useState(false);
       
-      // Generate forecasts for future installment months
-      transactions.forEach(txn => {
-        if (txn.isInstallment && txn.currentInstallment < txn.totalInstallments) {
-          const remaining = txn.totalInstallments - txn.currentInstallment;
-          const [origY, origM] = txn.yearMonth.split('-').map(Number);
+      // Form States
+      const [manualTx, setManualTx] = useState({ desc: "", amount: "", envelopeId: "var", category: "", note: "" });
 
-          for (let i = 1; i <= remaining; i++) {
-            let nextM = origM + i;
-            let nextY = origY;
-            while (nextM > 12) {
-              nextM -= 12;
-              nextY += 1;
-            }
-            const forecastYM = `${nextY}-${String(nextM).padStart(2, '0')}`;
-            
-            // Only push if not already present in that month
-            if (forecastYM === currentYM) {
-              result.push({
-                ...txn,
-                id: `forecast_${txn.id}_${i}`,
-                currentInstallment: txn.currentInstallment + i,
-                yearMonth: forecastYM,
-                isForecast: true
-              });
-            }
-          }
-        }
-      });
+      useEffect(() => {
+        // Load stored transactions
+        const unsubscribe = db.collection("transactions")
+          .where("month", "==", currentMonth)
+          .onSnapshot(snapshot => {
+            const txs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            setTransactions(txs);
+          }, err => {
+            console.log("Firestore offline/fallback", err);
+          });
+        return () => unsubscribe();
+      }, [currentMonth]);
 
-      return result.filter(t => t.yearMonth === currentYM);
-    }, [transactions, currentYM]);
-
-    // 12. Reverse Sorting (Newest First) inside envelope view
-    const sortedCurrentTransactions = useMemo(() => {
-      return [...allFilteredTransactions].sort((a, b) => new Date(b.date) - new Date(a.date));
-    }, [allFilteredTransactions]);
-
-    // 3. Exclude "שונות (חיוב מחיסכון)" from Net Balance Calculation
-    const netCalculation = useMemo(() => {
-      const regularExpenses = sortedCurrentTransactions
+      // Net Calculation excluding "Shonot" (Savings funded)
+      const totalIncome = 20000;
+      const regularExpenses = transactions
         .filter(t => {
           const env = envelopes.find(e => e.id === t.envelopeId);
-          return env && !env.isSavings; // Exclude savings-funded envelope
+          return env && !env.isShonot;
         })
-        .reduce((sum, t) => sum + Number(t.amount || 0), 0);
+        .reduce((sum, t) => sum + (parseFloat(t.amount) || 0), 0);
 
-      const netDifference = income - regularExpenses;
-      return { regularExpenses, netDifference };
-    }, [sortedCurrentTransactions, income, envelopes]);
+      const netDifference = totalIncome - regularExpenses;
 
-    // Handle Excel File Import with automatic Month/Year recognition (Req 13)
-    const handleFileUpload = (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
-
-      const reader = new FileReader();
-      reader.onload = (evt) => {
-        try {
-          const bstr = evt.target.result;
-          const wb = XLSX.read(bstr, { type: 'binary' });
-          const wsname = wb.SheetNames[0];
-          const ws = wb.Sheets[wsname];
-          const data = XLSX.utils.sheet_to_json(ws, { header: 1 });
-
-          const newParsedTxns = [];
-          
-          data.slice(1).forEach((row, idx) => {
-            if (!row || row.length < 2) return;
-            
-            const rawMerchant = row[1] || row[0] || "עסקה כללית";
-            const rawAmount = Math.abs(parseFloat(row[2] || row[3] || 0));
-            const rawDate = row[0] || new Date().toISOString().split('T')[0];
-            
-            // Extract Month & Year from Date string
-            let txnDate = new Date();
-            if (typeof rawDate === 'string' && rawDate.includes('-')) {
-              txnDate = new Date(rawDate);
-            }
-            const y = txnDate.getFullYear() || currentDate.year;
-            const m = String((txnDate.getMonth() + 1) || currentDate.month).padStart(2, '0');
-            const calculatedYM = `${y}-${m}`;
-
-            // Parse Installments (Req 1)
-            const instData = parseInstallmentData(rawMerchant, rawAmount);
-
-            if (rawAmount > 0) {
-              newParsedTxns.push({
-                id: `excel_${Date.now()}_${idx}`,
-                merchant: String(rawMerchant).replace(/(תשלום\s*\d+.*|\d+\/\d+)/g, '').trim(),
-                amount: rawAmount,
-                date: txnDate.toISOString().split('T')[0],
-                envelopeId: "e1",
-                category: "משתנות",
-                note: "יובא מאקסל",
-                yearMonth: calculatedYM,
-                isInstallment: instData.isInstallment,
-                currentInstallment: instData.current,
-                totalInstallments: instData.total,
-                card: "כרטיס אשראי"
-              });
-            }
-          });
-
-          setTransactions(prev => [...prev, ...newParsedTxns]);
-          alert(`יובאו בהצלחה ${newParsedTxns.length} עסקאות מקובץ האקסל!`);
-        } catch (err) {
-          alert("שגיאה בטעינת קובץ האקסל: " + err.message);
-        }
+      const handleAddManualTx = () => {
+        if (!manualTx.desc || !manualTx.amount) return;
+        const newTx = {
+          ...manualTx,
+          amount: parseFloat(manualTx.amount),
+          month: currentMonth,
+          date: new Date().toISOString().split('T')[0]
+        };
+        db.collection("transactions").add(newTx);
+        setManualTx({ desc: "", amount: "", envelopeId: "var", category: "", note: "" });
+        setShowForecastModal(false);
       };
-      reader.readAsBinaryString(file);
-    };
 
-    // 8. Update Envelope Budget from this month forward
-    const handleUpdateEnvelopeBudget = (envId, newBudget) => {
-      setEnvelopes(prev => prev.map(e => e.id === envId ? { ...e, budget: Number(newBudget) } : e));
-    };
+      // Export to Excel
+      const exportToExcel = () => {
+        const data = transactions.map(t => ({
+          "תיאור": t.desc,
+          "סכום": t.amount,
+          "מעטפה": envelopes.find(e => e.id === t.envelopeId)?.name || "",
+          "קטגוריה": t.category || "",
+          "הערה": t.note || "",
+          "תאריך": t.date || ""
+        }));
+        const ws = XLSX.utils.json_to_sheet(data);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "דוח חודשי");
+        XLSX.writeFile(wb, `דוח_תקציב_${currentMonth}.xlsx`);
+        setShowExportMenu(false);
+      };
 
-    // 10. Update Transaction Category / Note inside Envelope
-    const handleUpdateTxnField = (txnId, field, value) => {
-      setTransactions(prev => prev.map(t => t.id === txnId ? { ...t, [field]: value } : t));
-    };
+      // Export to PDF
+      const exportToPDF = () => {
+        const element = document.getElementById("pdf-report-content");
+        const opt = {
+          margin: 10,
+          filename: `דוח_תקציב_${currentMonth}.pdf`,
+          html2canvas: { scale: 2 },
+          jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+        };
+        html2pdf().set(opt).from(element).save();
+        setShowExportMenu(false);
+      };
 
-    // Navigation Months
-    const changeMonth = (delta) => {
-      setCurrentDate(prev => {
-        let newM = prev.month + delta;
-        let newY = prev.year;
-        if (newM > 12) { newM = 1; newY += 1; }
-        if (newM < 1) { newM = 12; newY -= 1; }
-        return { year: newY, month: newM };
-      });
-    };
-
-    // 7. Render Chart for Category Breakdown
-    useEffect(() => {
-      if (showChartModal && selectedEnvelope) {
-        const envTxns = sortedCurrentTransactions.filter(t => t.envelopeId === selectedEnvelope.id);
-        const categoryTotals = {};
-        envTxns.forEach(t => {
-          categoryTotals[t.category || 'שונות'] = (categoryTotals[t.category || 'שונות'] || 0) + Number(t.amount);
-        });
-
-        const ctx = document.getElementById('categoryPieChart');
-        if (ctx) {
-          new Chart(ctx, {
-            type: 'pie',
-            data: {
-              labels: Object.keys(categoryTotals),
-              datasets: [{
-                data: Object.values(categoryTotals),
-                backgroundColor: ['#3b82f6', '#8b5cf6', '#ec4899', '#10b981', '#f59e0b', '#6366f1']
-              }]
-            },
-            options: { responsive: true, plugins: { legend: { position: 'bottom' } } }
-          });
-        }
-      }
-    }, [showChartModal, selectedEnvelope, sortedCurrentTransactions]);
-
-    return (
-      <div className="max-w-4xl mx-auto p-4 pb-20">
-        
-        {/* Top Header & Status */}
-        <header className="flex justify-between items-center bg-emerald-50 border border-emerald-200 p-3 rounded-2xl mb-4">
-          <div className="flex items-center gap-2 text-emerald-800 font-bold text-sm">
-            <span className="w-2.5 h-2.5 bg-emerald-500 rounded-full animate-ping"></span>
-            מחובר: {user.name}
+      return (
+        <div>
+          {/* Top Status Header */}
+          <div style={{ background: "#dcfce7", color: "#166534", padding: "12px 16px", borderRadius: "14px", display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", fontWeight: "700" }}>
+            <span>✓ מחובר: רוני ולרי</span>
+            <button className="btn" style={{ background: "#2563eb", color: "white", padding: "6px 12px", fontSize: "13px" }}>התנתק</button>
           </div>
-          <button onClick={() => alert("התנתקת בהצלחה")} className="bg-blue-600 hover:bg-blue-700 text-white text-xs px-3 py-1.5 rounded-xl transition">
-            התנתק
-          </button>
-        </header>
 
-        {/* Month Selector & Overview Card */}
-        <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm mb-6">
-          <div className="flex justify-between items-center mb-4">
-            <div className="flex items-center gap-2">
-              <button onClick={() => changeMonth(-1)} className="bg-slate-100 p-2 rounded-xl text-slate-600 hover:bg-slate-200">◄</button>
-              <span className="text-lg font-extrabold text-blue-900 px-3 py-1 bg-blue-50 rounded-xl">
-                {currentDate.month === 10 ? "אוקטובר" : currentDate.month === 11 ? "נובמבר" : "חודש " + currentDate.month} {currentDate.year}
-              </span>
-              <button onClick={() => changeMonth(1)} className="bg-slate-100 p-2 rounded-xl text-slate-600 hover:bg-slate-200">►</button>
+          {/* User Greeting & Date Controls */}
+          <div className="card">
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", background: "#f1f5f9", padding: "6px 12px", borderRadius: "10px" }}>
+                <button onClick={() => setCurrentMonth("2026-09")} style={{ border: "none", background: "none", cursor: "pointer" }}>◄</button>
+                <span style={{ fontWeight: "800", color: "#1e40af" }}>אוקטובר 2026</span>
+                <button onClick={() => setCurrentMonth("2026-11")} style={{ border: "none", background: "none", cursor: "pointer" }}>►</button>
+              </div>
+              <h2 style={{ fontSize: "20px", fontWeight: "800" }}>שלום, רוני 👋</h2>
             </div>
-            <h1 className="text-xl font-black text-slate-800">שלום, רוני 👋</h1>
+
+            {/* Net Calculation Summary */}
+            <div style={{ background: "#0f172a", color: "white", padding: "16px", borderRadius: "12px", marginTop: "12px" }}>
+              <div style={{ fontSize: "12px", color: "#94a3b8" }}>הפרש נטו (הכנסות פחות הוצאות שוטפות)</div>
+              <div style={{ fontSize: "28px", fontWeight: "800", color: "#34d399", margin: "4px 0" }}>₪{netDifference.toLocaleString()}</div>
+              <div style={{ fontSize: "11px", color: "#cbd5e1" }}>* מעטפת "שונות (חיוב מחיסכון)" מוחרגת מחישוב הנטו מכיוון שהיא ממומנת מקופת חיסכון ייעודית.</div>
+            </div>
           </div>
 
-          {/* 3. Net Calculation Indicator */}
-          <div className="bg-gradient-to-r from-slate-900 to-blue-950 text-white p-5 rounded-2xl shadow-inner">
-            <div className="flex justify-between items-end mb-2">
-              <div>
-                <div className="text-xs text-slate-400 font-semibold mb-1">הפרש נטו (הכנסות פחות הוצאות שוטפות)</div>
-                <div className="text-3xl font-black text-emerald-400">
-                  {formatILS(netCalculation.netDifference)}
+          {/* Action Buttons */}
+          <div style={{ display: "flex", gap: "10px", marginBottom: "20px", position: "relative" }}>
+            <button className="btn btn-primary" style={{ flex: 1, justifyContent: "center" }}>📁 טעינת דפי מידע</button>
+            <button className="btn btn-warning" style={{ flex: 1, justifyContent: "center" }} onClick={() => setShowForecastModal(true)}>+ צפי/בדיקה</button>
+            
+            <div style={{ flex: 1, position: "relative" }}>
+              <button className="btn btn-success" style={{ width: "100%", justifyContent: "center" }} onClick={() => setShowExportMenu(!showExportMenu)}>
+                ייצוא נתונים 📤
+              </button>
+              {showExportMenu && (
+                <div className="export-menu">
+                  <button className="btn" style={{ background: "#f8fafc", color: "#0f172a", justifyContent: "flex-start" }} onClick={exportToExcel}>📊 ייצוא ל-Excel</button>
+                  <button className="btn" style={{ background: "#f8fafc", color: "#0f172a", justifyContent: "flex-start" }} onClick={exportToPDF}>📄 ייצוא ל-PDF</button>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Envelope Section Title */}
+          <h3 style={{ fontSize: "18px", fontWeight: "800", marginBottom: "12px" }}>מעטפות משתנות ותקציביות</h3>
+
+          {/* Envelopes List */}
+          {envelopes.map(env => {
+            const envTxs = transactions.filter(t => t.envelopeId === env.id);
+            const spent = envTxs.reduce((s, t) => s + (parseFloat(t.amount) || 0), 0);
+            const remaining = env.budget - spent;
+
+            return (
+              <div key={env.id} className="card" style={{ cursor: "pointer", position: "relative" }} onClick={() => setActiveEnvelope(env)}>
+                {env.isShonot && (
+                  <span style={{ position: "absolute", top: "12px", right: "12px", background: "#f59e0b", color: "white", fontSize: "10px", padding: "2px 6px", borderRadius: "6px", fontWeight: "700" }}>
+                    חיוב מחיסכון
+                  </span>
+                )}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                  <button className="btn" style={{ background: "#f1f5f9", color: "#475569", padding: "4px 8px", fontSize: "12px" }}>✏️ ערוך</button>
+                  <h4 style={{ fontSize: "18px", fontWeight: "700" }}>{env.name}</h4>
+                </div>
+
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "14px", color: "#64748b", margin: "6px 0" }}>
+                  <span>יצא: ₪{spent.toLocaleString()} מתוך ₪{env.budget.toLocaleString()}</span>
+                  <span>נשאר: ₪{remaining.toLocaleString()}</span>
+                </div>
+
+                <div style={{ background: "#e2e8f0", height: "8px", borderRadius: "4px", overflow: "hidden" }}>
+                  <div style={{ background: remaining < 0 ? "#ef4444" : "#2563eb", width: `${Math.min(100, (spent / env.budget) * 100)}%`, height: "100%" }}></div>
                 </div>
               </div>
-              <div className="text-left text-xs text-slate-300">
-                <div>הכנסות: {formatILS(income)}</div>
-                <div>הוצאות שוטפות: {formatILS(netCalculation.regularExpenses)}</div>
-              </div>
-            </div>
-            <div className="text-[11px] text-amber-300/90 border-t border-slate-800 pt-2 mt-2">
-              * מעטפת "שונות (חיוב מחיסכון)" מוחרגת מחישוב הנטו מכיוון שהיא ממומנת מקופת חיסכון ייעודית.
-            </div>
-          </div>
-        </div>
+            );
+          })}
 
-        {/* Search Bar */}
-        <div className="relative mb-6">
-          <input
-            type="text"
-            placeholder="חפש עסקה לפי שם בית עסק..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full bg-white border border-slate-200 rounded-2xl py-3 px-4 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm"
-          />
-        </div>
-
-        {/* Action Buttons Row */}
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-8">
-          {/* 6. Unified Export Button */}
-          <button 
-            onClick={() => setShowExportModal(true)}
-            className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold p-3.5 rounded-2xl flex items-center justify-center gap-2 shadow-sm text-sm transition"
-          >
-            <span>ייצוא נתונים 📤</span>
-          </button>
-
-          {/* 4. Forecast / Check Button */}
-          <button 
-            onClick={() => setShowForecastModal(true)}
-            className="bg-amber-500 hover:bg-amber-600 text-white font-bold p-3.5 rounded-2xl flex items-center justify-center gap-2 shadow-sm text-sm transition"
-          >
-            <span>+ צפי / בדיקה</span>
-          </button>
-
-          {/* Excel Import */}
-          <label className="bg-blue-600 hover:bg-blue-700 text-white font-bold p-3.5 rounded-2xl flex items-center justify-center gap-2 shadow-sm text-sm cursor-pointer transition col-span-2 md:col-span-1">
-            <span>טעינת דפי מידע 📂</span>
-            <input type="file" accept=".xlsx, .xls, .csv" onChange={handleFileUpload} className="hidden" />
-          </label>
-        </div>
-
-        {/* Envelopes Grid */}
-        <div className="mb-6">
-          <h2 className="text-lg font-bold text-slate-800 mb-4">מעטפות משתנות ותקציביות</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {envelopes.map(env => {
-              const envTxns = sortedCurrentTransactions.filter(t => t.envelopeId === env.id);
-              const spent = envTxns.reduce((sum, t) => sum + Number(t.amount || 0), 0);
-              const remaining = env.budget - spent;
-
-              return (
-                <div 
-                  key={env.id}
-                  onClick={() => setSelectedEnvelope(env)}
-                  className="bg-white border border-slate-200 rounded-2xl p-5 hover:border-blue-400 cursor-pointer transition shadow-sm relative overflow-hidden"
-                >
-                  {env.isSavings && (
-                    <span className="absolute top-0 left-0 bg-amber-500 text-white text-[10px] px-3 py-0.5 rounded-br-xl font-bold">
-                      חיוב מחיסכון
-                    </span>
-                  )}
-                  <div className="flex justify-between items-start mb-3">
-                    <div>
-                      <h3 className="font-extrabold text-slate-800 text-base">{env.name}</h3>
-                      {/* 11. Detailed Header: Spent out of Budget */}
-                      <div className="text-xs text-slate-500 font-semibold mt-1">
-                        יצא: <span className="text-slate-900 font-bold">{formatILS(spent)}</span> מתוך {formatILS(env.budget)}
-                      </div>
-                    </div>
-                    <button 
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        const newB = prompt(`עדכן תקציב עבור ${env.name}:`, env.budget);
-                        if (newB) handleUpdateEnvelopeBudget(env.id, newB);
-                      }}
-                      className="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded-lg font-semibold hover:bg-blue-100"
-                    >
-                      ערוך ✏️
-                    </button>
-                  </div>
-
-                  {/* Progress Bar */}
-                  <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden mb-2">
-                    <div 
-                      className={`h-full ${remaining < 0 ? 'bg-red-500' : 'bg-blue-600'}`}
-                      style={{ width: `${Math.min(100, (spent / (env.budget || 1)) * 100)}%` }}
-                    ></div>
-                  </div>
-
-                  <div className="flex justify-between items-center text-xs">
-                    <span className="text-slate-500">נשאר: <strong className={remaining < 0 ? 'text-red-600' : 'text-emerald-600'}>{formatILS(remaining)}</strong></span>
-                    <span className="text-slate-400 font-medium">{envTxns.length} עסקאות</span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* 2 & 9 & 10 & 12. ENVELOPE MODAL (Detailed View) */}
-        {selectedEnvelope && (
-          <div className="fixed inset-0 modal-backdrop z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-3xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden relative">
-              
-              {/* Modal Header */}
-              <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-                <div>
-                  <h3 className="text-xl font-black text-slate-800">{selectedEnvelope.name}</h3>
-                  <p className="text-xs text-slate-500">
-                    יצא: {formatILS(sortedCurrentTransactions.filter(t => t.envelopeId === selectedEnvelope.id).reduce((s,t)=>s+Number(t.amount),0))} מתוך {formatILS(selectedEnvelope.budget)}
-                  </p>
-                </div>
+          {/* Active Envelope Detail Modal */}
+          {activeEnvelope && (
+            <div className="modal-backdrop">
+              <div className="modal-content">
+                <button className="close-btn-fixed" onClick={() => { setActiveEnvelope(null); setShowPieChart(false); }}>✕</button>
                 
-                <div className="flex items-center gap-2">
-                  {/* 9. Pie Chart Button */}
-                  <button 
-                    onClick={() => setShowChartModal(true)}
-                    className="p-2 bg-purple-100 text-purple-700 rounded-xl hover:bg-purple-200 text-xs font-bold flex items-center gap-1"
-                  >
-                    📊 התפלגות
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", marginTop: "10px" }}>
+                  <button className="btn btn-purple" style={{ padding: "6px 12px", fontSize: "12px" }} onClick={() => setShowPieChart(!showPieChart)}>
+                    📊 {showPieChart ? "הצג רשימה" : "הצג התפלגות פאי"}
                   </button>
-
-                  {/* 2. Prominent Close (X) Button */}
-                  <button 
-                    onClick={() => setSelectedEnvelope(null)}
-                    className="w-9 h-9 bg-slate-200 hover:bg-slate-300 rounded-full flex items-center justify-center font-bold text-slate-700 text-lg transition"
-                  >
-                    ✕
-                  </button>
+                  <h3 style={{ fontSize: "20px", fontWeight: "800" }}>מעטפת {activeEnvelope.name}</h3>
                 </div>
-              </div>
 
-              {/* Modal Body: Transactions List (Sorted Newest First) */}
-              <div className="p-5 overflow-y-auto space-y-3 flex-1">
-                {sortedCurrentTransactions
-                  .filter(t => t.envelopeId === selectedEnvelope.id)
-                  .map((txn) => (
-                    <div key={txn.id} className="p-4 rounded-2xl border border-slate-100 bg-slate-50/50 flex flex-col gap-2">
-                      <div className="flex justify-between items-center">
-                        <div>
-                          <div className="font-extrabold text-slate-800 text-base flex items-center gap-2">
-                            {txn.merchant}
-                            
-                            {/* 1. Purple Installment Badge */}
-                            {txn.isInstallment && (
-                              <span className="bg-purple-100 text-purple-800 text-[11px] px-2.5 py-0.5 rounded-full font-extrabold border border-purple-200">
-                                תשלום {txn.currentInstallment} מתוך {txn.totalInstallments}
-                              </span>
-                            )}
+                {showPieChart ? (
+                  <div style={{ padding: "20px", textAliing: "center", color: "#64748b" }}>
+                    <p>[תרשים התפלגות קטגוריות עבור מעטפת {activeEnvelope.name}]</p>
+                  </div>
+                ) : (
+                  <div>
+                    <h4 style={{ fontSize: "15px", fontWeight: "700", marginBottom: "10px" }}>הוצאות במעטפת (מהחדש לישן):</h4>
+                    {transactions
+                      .filter(t => t.envelopeId === activeEnvelope.id)
+                      .reverse() // Sort newest first
+                      .map((t, idx) => {
+                        const inst = parseInstallment(t.desc);
+                        return (
+                          <div key={idx} style={{ borderBottom: "1px solid #f1f5f9", padding: "10px 0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                            <div>
+                              <div style={{ fontWeight: "700", fontSize: "15px" }}>
+                                {t.desc}
+                                {inst && (
+                                  <span className="badge-purple" style={{ marginRight: "8px" }}>
+                                    תשלום {inst.current} מתוך {inst.total}
+                                  </span>
+                                )}
+                              </div>
+                              <div style={{ fontSize: "12px", color: "#64748b" }}>
+                                {t.date || "2026-10-22"} • קטגוריה: <span style={{ color: "#2563eb", fontWeight: "600" }}>{t.category || "כללי"}</span>
+                              </div>
+                              {t.note && <div style={{ fontSize: "12px", color: "#d97706", marginTop: "2px" }}>💡 {t.note}</div>}
+                            </div>
+                            <div style={{ fontWeight: "800", fontSize: "16px", color: "#0f172a" }}>
+                              ₪{parseFloat(t.amount).toLocaleString()}
+                            </div>
                           </div>
-                          <div className="text-xs text-slate-400 mt-0.5">{txn.date} • {txn.card}</div>
-                        </div>
-                        <div className="text-lg font-black text-slate-900">
-                          {formatILS(txn.amount)}
-                        </div>
-                      </div>
+                        );
+                      })}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
-                      {/* 10. Editable Category & 5. Note Field */}
-                      <div className="grid grid-cols-2 gap-2 mt-2 pt-2 border-t border-slate-200/60 text-xs">
-                        <div>
-                          <label className="text-[10px] text-slate-400 font-bold block mb-1">קטגוריה:</label>
-                          <select 
-                            value={txn.category} 
-                            onChange={(e) => handleUpdateTxnField(txn.id, 'category', e.target.value)}
-                            className="w-full bg-white border border-slate-200 rounded-lg p-1.5 font-semibold text-slate-700"
-                          >
-                            {DEFAULT_CATEGORIES.map(cat => (
-                              <option key={cat} value={cat}>{cat}</option>
-                            ))}
-                          </select>
-                        </div>
+          {/* Forecast / Add Transaction Modal */}
+          {showForecastModal && (
+            <div className="modal-backdrop">
+              <div className="modal-content">
+                <button className="close-btn-fixed" onClick={() => setShowForecastModal(false)}>✕</button>
+                <h3 style={{ fontSize: "18px", fontWeight: "800", marginBottom: "16px" }}>הוספת עסקה / צפי הוצאה</h3>
 
-                        <div>
-                          <label className="text-[10px] text-slate-400 font-bold block mb-1">הערה להוצאה:</label>
-                          <input 
-                            type="text"
-                            placeholder="הוסף הערה..."
-                            value={txn.note || ""}
-                            onChange={(e) => handleUpdateTxnField(txn.id, 'note', e.target.value)}
-                            className="w-full bg-white border border-slate-200 rounded-lg p-1.5 text-slate-700"
-                          />
-                        </div>
-                      </div>
-                    </div>
+                <label style={{ fontSize: "13px", fontWeight: "700" }}>תיאור העסקה</label>
+                <input type="text" value={manualTx.desc} onChange={e => setManualTx({ ...manualTx, desc: e.target.value })} placeholder="דוגמה: מקס רחובות (תשלום 1 מתוך 3)" />
+
+                <label style={{ fontSize: "13px", fontWeight: "700" }}>סכום (₪)</label>
+                <input type="number" value={manualTx.amount} onChange={e => setManualTx({ ...manualTx, amount: e.target.value })} placeholder="0.00" />
+
+                <label style={{ fontSize: "13px", fontWeight: "700" }}>שיוך למעטפה</label>
+                <select value={manualTx.envelopeId} onChange={e => setManualTx({ ...manualTx, envelopeId: e.target.value })}>
+                  {envelopes.map(env => (
+                    <option key={env.id} value={env.id}>{env.name}</option>
                   ))}
-              </div>
-            </div>
-          </div>
-        )}
+                </select>
 
-        {/* 6. UNIFIED EXPORT MODAL (Excel & PDF) */}
-        {showExportModal && (
-          <div className="fixed inset-0 modal-backdrop z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-3xl w-full max-w-md p-6 shadow-2xl relative">
-              <button onClick={() => setShowExportModal(false)} className="absolute top-4 left-4 text-slate-400 hover:text-slate-600 font-bold">✕</button>
-              <h3 className="text-lg font-black text-slate-800 mb-4 text-center">בחר פורמט לייצוא דוח</h3>
-              <div className="grid grid-cols-2 gap-4">
-                <button 
-                  onClick={() => {
-                    alert("מייצא קובץ Excel מותאם...");
-                    setShowExportModal(false);
-                  }}
-                  className="bg-emerald-50 border-2 border-emerald-500 text-emerald-800 font-bold p-4 rounded-2xl hover:bg-emerald-100 flex flex-col items-center gap-2"
-                >
-                  <span className="text-2xl">📊</span>
-                  <span>ייצוא ל-Excel</span>
-                </button>
+                <label style={{ fontSize: "13px", fontWeight: "700" }}>קטגוריה</label>
+                <input type="text" value={manualTx.category} onChange={e => setManualTx({ ...manualTx, category: e.target.value })} placeholder="דוגמה: חשמל, קוסמטיקה..." />
 
-                <button 
-                  onClick={() => {
-                    alert("מייצא קובץ PDF מעוצב...");
-                    setShowExportModal(false);
-                  }}
-                  className="bg-red-50 border-2 border-red-500 text-red-800 font-bold p-4 rounded-2xl hover:bg-red-100 flex flex-col items-center gap-2"
-                >
-                  <span className="text-2xl">📄</span>
-                  <span>ייצוא ל-PDF</span>
+                <label style={{ fontSize: "13px", fontWeight: "700" }}>הערה חופשית</label>
+                <input type="text" value={manualTx.note} onChange={e => setManualTx({ ...manualTx, note: e.target.value })} placeholder="פירוט נוסף..." />
+
+                <button className="btn btn-primary" style={{ width: "100%", justifyContent: "center", marginTop: "10px" }} onClick={handleAddManualTx}>
+                  שמור עסקה
                 </button>
               </div>
             </div>
+          )}
+
+          {/* Invisible Container for PDF Export */}
+          <div id="pdf-report-content" style={{ display: "none" }}>
+            <h2>דוח תקציב חודשי - {currentMonth}</h2>
+            <p>הכנסות: ₪{totalIncome}</p>
+            <p>הוצאות שוטפות: ₪{regularExpenses}</p>
+            <p>הפרש נטו: ₪{netDifference}</p>
           </div>
-        )}
-
-        {/* 4. FORECAST / MANUAL ADD MODAL */}
-        {showForecastModal && (
-          <div className="fixed inset-0 modal-backdrop z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-3xl w-full max-w-md p-6 shadow-2xl relative">
-              <button onClick={() => setShowForecastModal(false)} className="absolute top-4 left-4 text-slate-400 hover:text-slate-600 font-bold">✕</button>
-              <h3 className="text-lg font-black text-slate-800 mb-4">הוספת הוצאה / צפי חדש</h3>
-              
-              <div className="space-y-3 text-xs">
-                <div>
-                  <label className="font-bold text-slate-600 block mb-1">שם העסק:</label>
-                  <input 
-                    type="text" 
-                    value={forecastForm.merchant}
-                    onChange={(e) => setForecastForm({...forecastForm, merchant: e.target.value})}
-                    className="w-full border border-slate-200 rounded-xl p-2.5 text-sm" 
-                  />
-                </div>
-
-                <div>
-                  <label className="font-bold text-slate-600 block mb-1">סכום (₪):</label>
-                  <input 
-                    type="number" 
-                    value={forecastForm.amount}
-                    onChange={(e) => setForecastForm({...forecastForm, amount: e.target.value})}
-                    className="w-full border border-slate-200 rounded-xl p-2.5 text-sm" 
-                  />
-                </div>
-
-                <div>
-                  <label className="font-bold text-slate-600 block mb-1">משוייך למעטפה:</label>
-                  <select 
-                    value={forecastForm.envelopeId}
-                    onChange={(e) => setForecastForm({...forecastForm, envelopeId: e.target.value})}
-                    className="w-full border border-slate-200 rounded-xl p-2.5 text-sm"
-                  >
-                    {envelopes.map(e => (
-                      <option key={e.id} value={e.id}>{e.name}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <button 
-                  onClick={() => {
-                    if(!forecastForm.merchant || !forecastForm.amount) return alert("נא למלא סכום ושם עסק");
-                    setTransactions(prev => [...prev, {
-                      id: `manual_${Date.now()}`,
-                      ...forecastForm,
-                      amount: Number(forecastForm.amount),
-                      yearMonth: currentYM,
-                      isInstallment: false,
-                      currentInstallment: 1,
-                      totalInstallments: 1,
-                      card: "ידני"
-                    }]);
-                    setShowForecastModal(false);
-                    alert("ההוצאה נוספה בהצלחה!");
-                  }}
-                  className="w-full bg-amber-500 text-white font-bold p-3 rounded-xl hover:bg-amber-600 text-sm mt-2"
-                >
-                  שמור הוצאה
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* 9. CATEGORY PIE CHART MODAL */}
-        {showChartModal && (
-          <div className="fixed inset-0 modal-backdrop z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-3xl w-full max-w-md p-6 shadow-2xl relative">
-              <button onClick={() => setShowChartModal(false)} className="absolute top-4 left-4 text-slate-400 hover:text-slate-600 font-bold">✕</button>
-              <h3 className="text-lg font-black text-slate-800 mb-4 text-center">התפלגות הוצאות במעטפה</h3>
-              <canvas id="categoryPieChart" width="300" height="300"></canvas>
-            </div>
-          </div>
-        )}
-
-        {/* Quick Version Reload Bar */}
-        <div className="fixed bottom-3 left-1/2 -translate-x-1/2 z-40">
-          <button 
-            onClick={() => window.location.reload(true)} 
-            className="bg-slate-900/90 hover:bg-slate-900 text-white text-[11px] px-4 py-1.5 rounded-full shadow-lg border border-slate-700 backdrop-blur-sm"
-          >
-            גרסה v1.2 🔄 (רענון מהיר)
-          </button>
         </div>
+      );
+    }
 
-      </div>
-    );
-  }
-
-  const root = ReactDOM.createRoot(document.getElementById('root'));
-  root.render(<App />);
-</script>
-
+    ReactDOM.render(<App />, document.getElementById("root"));
+  </script>
 </body>
 </html>

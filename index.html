@@ -349,4 +349,2404 @@
   </div>
 
   <!-- Cash Withdrawal Envelope (משיכת מזומן) -->
-  <div
+  <div class="card card-cash-envelope" onclick="openCashModal()">
+    <div class="card-top">
+      <span class="card-title" style="color:#047857;">
+        💵 משיכת מזומן
+        <span id="cashStarNotice" style="display:none; color:#ef4444; font-size:11px; margin-right:4px;">⭐ יש לבדוק עדכוני משיכות</span>
+      </span>
+      <span class="card-spent-bold" id="cashEnvelopeTotalVal" style="color:#065f46;">₪0</span>
+    </div>
+    <div class="card-footer">
+      <span id="cashSubtext">לחץ לניהול משיכות מזומן, בייביסיטר ואירועים</span>
+      <span style="font-weight:bold; color:#047857;">פתח מזומן ↗</span>
+    </div>
+  </div>
+
+  <!-- Separate Direct Debits List -->
+  <div id="directDebitsList"></div>
+
+  <div class="grid-2">
+    <div class="banner-card" onclick="openIncomeModal()">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <span class="banner-title">הכנסות</span>
+        <button class="btn-add" onclick="event.stopPropagation(); addIncomePrompt()">+</button>
+      </div>
+      <div class="banner-val" id="incomeVal" style="color:var(--success)">₪0</div>
+      <div class="banner-subtext">לחץ לצפייה ועדכון הכנסות לפי בנק</div>
+    </div>
+    
+    <div class="banner-card" onclick="openSavingsModal()">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <span class="banner-title">חסכונות</span>
+        <button class="btn-add" onclick="event.stopPropagation(); addSavingsPrompt()">+</button>
+      </div>
+      <div id="savingsDisplay" style="margin-top:2px;"></div>
+      <div class="progress-bg">
+        <div id="savingsProgressBar" class="progress-bar success" style="width:0%"></div>
+      </div>
+      <div class="banner-subtext" id="savingsSubtext">לחץ לסימון הורדות</div>
+    </div>
+  </div>
+
+  <!-- Smart Bank Transfer Recommendation Forecast Banner -->
+  <div id="bankTransferBanner" class="bank-transfer-banner" onclick="openTransferForecastModal()" style="display:none;">
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+      <span style="font-weight:800; font-size:15px;">🤖 צפי חישובי העברות בין בנקים</span>
+      <span style="font-size:12px; font-weight:bold; text-decoration:underline;">לחץ לחישוב השקוף ↗</span>
+    </div>
+    <div id="bankTransferText" style="font-size:14px; font-weight:700; margin-top:6px;">
+      מחשב צפי העברות...
+    </div>
+  </div>
+
+  <!-- Clickable Detailed Net Balance Banner -->
+  <div id="netBalanceBanner" class="net-banner-detailed positive" onclick="openNetBalanceModal()">
+    <div class="net-formula-row">
+      <span>📐 תרגיל מאזן מפורט לחודש זה</span>
+      <span style="font-size:12px; font-weight:bold; text-decoration:underline;">לחץ לחישוב השקוף ↗</span>
+    </div>
+    <div class="net-result-row">
+      <span>הפרש נטו סופי לחודש זה:</span>
+      <span id="netBalanceValue">₪0</span>
+    </div>
+  </div>
+
+  <!-- Modal -->
+  <div id="modal" class="modal">
+    <div class="modal-content">
+      <button class="close-x-floating" onclick="closeModal()" title="סגור חלון">✕</button>
+      <div class="modal-header">
+        <h3 id="modalTitle"></h3>
+      </div>
+      <div id="modalBody"></div>
+      <button onclick="closeModal()" style="width:100%; padding:12px; margin-top:16px; border-radius:10px; border:none; background:#f1f5f9; font-weight:bold; cursor:pointer;">סגור</button>
+    </div>
+  </div>
+
+  <!-- Hidden Container for PDF Rendering -->
+  <div id="pdfPrintContainer"></div>
+
+  <!-- Firebase Integration -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+    import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+    import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyA96mByhB6lZSLoQWYl07iuWXdvWNL5pOE",
+      authDomain: "my-money-decb4.firebaseapp.com",
+      projectId: "my-money-decb4",
+      storageBucket: "my-money-decb4.firebasestorage.app",
+      messagingSenderId: "327628782955",
+      appId: "1:327628782955:web:c103a0e22eb9a13b3b602e",
+      measurementId: "G-RNQZSGL975"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+    const provider = new GoogleAuthProvider();
+
+    let currentUser = null;
+    let isRemoteUpdate = false;
+
+    window.loginWithGoogle = async () => {
+      try {
+        await signInWithPopup(auth, provider);
+      } catch (err) {
+        alert("שגיאה בהתחברות: " + err.message);
+      }
+    };
+
+    window.logout = () => signOut(auth);
+
+    onAuthStateChanged(auth, (user) => {
+      currentUser = user;
+      const banner = document.getElementById("authBanner");
+      const bannerText = document.getElementById("authBannerText");
+      const bannerBtn = document.getElementById("authBannerBtn");
+      const greeting = document.getElementById("userGreetingText");
+
+      if (user) {
+        banner.style.display = "flex";
+        banner.style.background = "#dcfce7";
+        banner.style.borderColor = "#86efac";
+        banner.style.color = "#166534";
+        bannerText.textContent = `✓ מחובר: ${user.displayName || user.email}`;
+        bannerBtn.textContent = "התנתק";
+        bannerBtn.onclick = window.logout;
+        greeting.textContent = `שלום, ${user.displayName ? user.displayName.split(' ')[0] : 'רוני'} 👋`;
+
+        listenToCloudData();
+      } else {
+        banner.style.display = "flex";
+        banner.style.background = "#fef3c7";
+        banner.style.borderColor = "#fcd34d";
+        banner.style.color = "#92400e";
+        bannerText.textContent = "🔒 יש להתחבר לסנכרון בזמן אמת:";
+        bannerBtn.textContent = "התחבר עם גוגל";
+        bannerBtn.onclick = window.loginWithGoogle;
+        greeting.textContent = "שלום, אורח 👋";
+      }
+    });
+
+    function listenToCloudData() {
+      const docRef = doc(db, "budgets", "shared_budget");
+      onSnapshot(docRef, (docSnap) => {
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          if (data && data.appState) {
+            isRemoteUpdate = true;
+            window.appState = Object.assign(window.appState, data.appState);
+            window.render();
+            isRemoteUpdate = false;
+          }
+        }
+      }, (err) => {
+        console.error("Firestore Error:", err);
+      });
+    }
+
+    window.saveStateToCloud = async () => {
+      if (!currentUser || isRemoteUpdate) return;
+      try {
+        const docRef = doc(db, "budgets", "shared_budget");
+        await setDoc(docRef, {
+          appState: window.appState,
+          updatedAt: new Date(),
+          updatedBy: currentUser.email
+        }, { merge: true });
+      } catch (err) {
+        console.error("Error saving state:", err);
+      }
+    };
+  </script>
+
+  <script>
+    const MONTH_NAMES = ["ינואר", "פברואר", "מרץ", "אפריל", "מאי", "יוני", "יולי", "אוגוסט", "ספטמבר", "אוקטובר", "נובמבר", "דצמבר"];
+
+    window.appState = {
+      selectedYear: 2026,
+      selectedMonth: 10,
+      
+      envelopes: [
+        { id: 'var_general', name: 'משתנות', budget: 5500 },
+        { id: 'var_unplanned', name: 'בלת"מים', budget: 4300 },
+        { id: 'var_car', name: 'רכב', budget: 1200 }
+      ],
+      
+      budgetTransferLogs: {}, 
+      lastImportDates: { Pepper: null, International: null },
+
+      hoaState: {
+        lastPaidYear: 2026,
+        lastPaidMonth: 2,
+        monthlyCost: 200,
+        monthlyPayments: {}
+      },
+
+      cashWithdrawals: [],
+
+      directDebits: [
+        { id: 'dd1', name: 'משכנתא', defaultAmount: 7050, defaultDay: 10, bank: 'International', monthlyData: {} },
+        { id: 'dd2', name: 'גן של בניה', defaultAmount: 3380, defaultDay: 2, bank: 'International', monthlyData: {} }
+      ],
+      generalFixedList: [
+        { id: 'gf_clalit', matchKeywords: ['שירותי בריאות כללית', 'שרותי בריאות כללית', 'כללית'], matchAmount: 300.46, name: 'שירותי בריאות כללית', defaultAmount: 300.46, isBimonthly: false, bank: 'International', monthlyData: {} },
+        { id: 'gf_partner', matchKeywords: ['פרטנר', 'חברת פרטנר'], matchAmount: 150.27, name: 'פרטנר תקשורת (אינטרנט)', defaultAmount: 150.27, isBimonthly: false, bank: 'International', monthlyData: {} },
+        { id: 'gf_telzar', matchKeywords: ['019', 'טלזר'], matchAmount: 90, name: 'טלזר 019 (טלפונים)', defaultAmount: 90, isBimonthly: false, bank: 'International', monthlyData: {} },
+        
+        { id: 'gf_fnx_1', matchKeywords: ['הפניקס'], matchAmount: 195.95, name: 'הפניקס חיים/בריאות (1)', defaultAmount: 195.95, isBimonthly: false, bank: 'International', monthlyData: {} },
+        { id: 'gf_fnx_2', matchKeywords: ['הפניקס'], matchAmount: 190.91, name: 'הפניקס חיים/בריאות (2)', defaultAmount: 190.91, isBimonthly: false, bank: 'International', monthlyData: {} },
+        { id: 'gf_fnx_3', matchKeywords: ['הפניקס'], matchAmount: 100.65, name: 'הפניקס חיים/בריאות (3)', defaultAmount: 100.65, isBimonthly: false, bank: 'International', monthlyData: {} },
+        { id: 'gf_fnx_4', matchKeywords: ['הפניקס'], matchAmount: 26.42, name: 'הפניקס חיים/בריאות (4)', defaultAmount: 26.42, isBimonthly: false, bank: 'International', monthlyData: {} },
+        { id: 'gf_fnx_5', matchKeywords: ['הפניקס'], matchAmount: 203.24, name: 'הפניקס חיים/בריאות (5)', defaultAmount: 203.24, isBimonthly: false, bank: 'International', monthlyData: {} },
+
+        { id: 'gf_mig_1', matchKeywords: ['מגדל'], matchAmount: 46.13, name: 'מגדל חיים/בריאות - בתאל (1)', defaultAmount: 46.13, isBimonthly: false, bank: 'International', monthlyData: {} },
+        { id: 'gf_mig_2', matchKeywords: ['מגדל'], matchAmount: 47.52, name: 'מגדל חיים/בריאות - בתאל (2)', defaultAmount: 47.52, isBimonthly: false, bank: 'International', monthlyData: {} },
+
+        { id: 'gf_yashir_mortgage', matchKeywords: ['ביטוח ישיר-חיים', 'ביטוח ישיר'], matchAmount: 123.57, name: 'ביטוח ישיר (ביטוח משכנתא)', defaultAmount: 123.57, isBimonthly: false, bank: 'International', monthlyData: {} },
+
+        { id: 'gf_arnona_reh', matchKeywords: ['עיריית רחובות', 'עירית רחובות', 'ארנונה'], matchAmount: 1093.90, name: 'עיריית רחובות (ארנונה)', defaultAmount: 1093.90, isBimonthly: true, dueMonths: [2, 4, 6, 8, 10, 12], bank: 'International', monthlyData: {} },
+        { id: 'gf_elec_il', matchKeywords: ['חברת החשמל'], matchAmount: 709.56, name: 'חברת החשמל לישראל', defaultAmount: 709.56, isBimonthly: true, dueMonths: [1, 3, 5, 7, 9, 11], bank: 'International', monthlyData: {} },
+        { id: 'gf_water', matchKeywords: ['מיתב', 'תאגיד מים', 'מי רחובות'], defaultAmount: 140, name: 'תאגיד מים', isBimonthly: true, dueMonths: [2, 4, 6, 8, 10, 12], bank: 'International', monthlyData: {} },
+        { id: 'gf_gas', matchKeywords: ['סופרגז', 'אמישראגז', 'פזגז'], defaultAmount: 75, name: 'גז', isBimonthly: true, dueMonths: [2, 4, 6, 8, 10, 12], bank: 'International', monthlyData: {} }
+      ],
+      transactions: [],
+
+      incomesList: [
+        { id: 'inc_batel', source: 'משכורת בתאל', defaultAmount: 14900, bank: 'International', monthlyData: {} },
+        { id: 'inc_roni', source: 'שבתון רוני', defaultAmount: 8500, bank: 'Pepper', monthlyData: {} },
+        { id: 'inc_apartments', source: 'דירות', defaultAmount: 3400, bank: 'Pepper', isDelayedAfterBilling: true, monthlyData: {} },
+        { id: 'inc_kids', source: 'קצבת ילדים', defaultAmount: 437, bank: 'International', monthlyData: {} },
+        { id: 'inc_btl_disability', source: 'ביטוח לאומי ג"נ', defaultAmount: 1943, bank: 'International', monthlyData: {} }
+      ],
+
+      savingsList: [
+        { id: 's1', name: 'חיסכון כללי', target: 1500, bank: 'Pepper', isDone: false },
+        { id: 's2', name: 'חיסכון לביא', target: 150, bank: 'Pepper', isDone: false },
+        { id: 's3', name: 'חיסכון שילה', target: 150, bank: 'Pepper', isDone: false },
+        { id: 's4', name: 'חיסכון בניה', target: 150, bank: 'Pepper', isDone: false }
+      ],
+      pendingImportTxs: [],
+      rules: {},
+      activeModalEnvId: null,
+      chartInstance: null
+    };
+
+    function getCurrentMonthKey() {
+      return `${appState.selectedYear}-${String(appState.selectedMonth).padStart(2, '0')}`;
+    }
+
+    // מפענח תאריכים מורחב התומך במספרי אקסל נומריים וכל סוגי המחרוזות
+    function parseTxDate(dateVal) {
+      if (!dateVal || dateVal === 'צפי חודשי') return null;
+
+      // טיפול בתאריך נומרי של אקסל (Serial Date Number)
+      if (typeof dateVal === 'number' || (!isNaN(Number(dateVal)) && Number(dateVal) > 30000 && Number(dateVal) < 60000)) {
+        const serial = Number(dateVal);
+        const dt = new Date(Math.round((serial - 25569) * 86400 * 1000));
+        if (!isNaN(dt.getTime())) {
+          const day = dt.getDate();
+          const month = dt.getMonth() + 1;
+          const year = dt.getFullYear();
+          return { day, month, year, monthKey: `${year}-${String(month).padStart(2, '0')}` };
+        }
+      }
+
+      let str = String(dateVal).trim();
+      if (str.includes(' ')) {
+        str = str.split(' ')[0];
+      }
+
+      let day, month, year;
+      let parts = [];
+
+      if (str.includes('/')) parts = str.split('/');
+      else if (str.includes('-')) parts = str.split('-');
+      else if (str.includes('.')) parts = str.split('.');
+
+      if (parts.length === 3) {
+        if (parts[0].length === 4) { // YYYY-MM-DD
+          year = parseInt(parts[0], 10);
+          month = parseInt(parts[1], 10);
+          day = parseInt(parts[2], 10);
+        } else { // DD-MM-YYYY או DD-MM-YY
+          day = parseInt(parts[0], 10);
+          month = parseInt(parts[1], 10);
+          year = parseInt(parts[2], 10);
+        }
+      } else if (parts.length === 2) { // MM/YYYY
+        month = parseInt(parts[0], 10);
+        year = parseInt(parts[1], 10);
+        day = 1;
+      }
+
+      if (year < 100) year += 2000;
+      if (isNaN(day) || isNaN(month) || isNaN(year)) return null;
+
+      return { day, month, year, monthKey: `${year}-${String(month).padStart(2, '0')}` };
+    }
+
+    // בדיקת שיוך חודש מדויקת וחד-משמעית המתעדפת תמיד את התאריך הממשי של העסקה
+    function isTxInSelectedMonth(t) {
+      if (!t) return false;
+      if (t.date === 'צפי חודשי') return true;
+
+      // 1. קודם כל מפענחים ישירות מתוך התאריך הממשי של העסקה (הגנה מוחלטת מזליגת חודשים)
+      const parsed = parseTxDate(t.date);
+      if (parsed) {
+        return parsed.month === appState.selectedMonth && parsed.year === appState.selectedYear;
+      }
+
+      // 2. רק במידה והתאריך אינו ניתן לפענוח (למשל טקסט חופשי), מסתמכים על monthKey
+      if (t.monthKey) {
+        return t.monthKey === getCurrentMonthKey();
+      }
+
+      return false;
+    }
+
+    function navigateMonth(direction) {
+      appState.selectedMonth += direction;
+      if (appState.selectedMonth > 12) {
+        appState.selectedMonth = 1;
+        appState.selectedYear += 1;
+      } else if (appState.selectedMonth < 1) {
+        appState.selectedMonth = 12;
+        appState.selectedYear -= 1;
+      }
+      render();
+    }
+
+    function openMonthPickerModal() {
+      document.getElementById('modalTitle').innerText = "בחירת חודש ושנה";
+      
+      let yearOptions = '';
+      for (let y = 2024; y <= 2028; y++) {
+        yearOptions += `<option value="${y}" ${y === appState.selectedYear ? 'selected' : ''}>${y}</option>`;
+      }
+
+      let html = `
+        <div style="margin-bottom:16px;">
+          <label style="font-size:13px; font-weight:bold; color:#64748b; display:block; margin-bottom:6px;">שנה:</label>
+          <select id="modalYearSelect" class="search-input" style="font-weight:bold;">
+            ${yearOptions}
+          </select>
+        </div>
+
+        <label style="font-size:13px; font-weight:bold; color:#64748b; display:block; margin-bottom:8px;">חודש הוצאות:</label>
+        <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:8px; margin-bottom:16px;">
+          ${MONTH_NAMES.map((mName, idx) => `
+            <button onclick="selectMonthFromModal(${idx + 1})" 
+              style="padding:10px; border-radius:10px; font-weight:bold; border:1px solid var(--border);
+              background:${(idx + 1) === appState.selectedMonth ? 'var(--primary)' : '#f1f5f9'};
+              color:${(idx + 1) === appState.selectedMonth ? '#fff' : 'var(--text)'}; cursor:pointer;">
+              ${mName}
+            </button>
+          `).join('')}
+        </div>
+
+        <button onclick="jumpToCurrentMonth()" style="width:100%; padding:10px; background:#eff6ff; color:#1e40af; border:1px solid #bfdbfe; border-radius:10px; font-weight:bold; cursor:pointer;">
+          📅 קפוץ לחודש הנוכחי
+        </button>
+      `;
+
+      document.getElementById('modalBody').innerHTML = html;
+      document.getElementById('modal').style.display = 'flex';
+    }
+
+    function selectMonthFromModal(monthNum) {
+      appState.selectedYear = parseInt(document.getElementById('modalYearSelect').value);
+      appState.selectedMonth = monthNum;
+      closeModal();
+      render();
+    }
+
+    function jumpToCurrentMonth() {
+      const today = new Date();
+      appState.selectedYear = today.getFullYear();
+      appState.selectedMonth = today.getMonth() + 1;
+      closeModal();
+      render();
+    }
+
+    function calculateHoaDebt() {
+      let year = appState.hoaState.lastPaidYear;
+      let month = appState.hoaState.lastPaidMonth + 1;
+      if (month > 12) { month = 1; year++; }
+
+      let debtMonths = 0;
+      while (year < appState.selectedYear || (year === appState.selectedYear && month <= appState.selectedMonth)) {
+        debtMonths++;
+        month++;
+        if (month > 12) { month = 1; year++; }
+      }
+
+      return {
+        monthsCount: debtMonths,
+        debtAmount: debtMonths * appState.hoaState.monthlyCost,
+        lastPaidText: `${MONTH_NAMES[appState.hoaState.lastPaidMonth - 1]} ${appState.hoaState.lastPaidYear}`
+      };
+    }
+
+    function updateHeaderDisplay() {
+      const monthName = MONTH_NAMES[appState.selectedMonth - 1];
+      document.getElementById('displayMonthTitle').innerText = `${monthName} ${appState.selectedYear}`;
+
+      let billingYear = appState.selectedYear;
+      let billingMonth = appState.selectedMonth + 1;
+      if (billingMonth > 12) { billingMonth = 1; billingYear += 1; }
+
+      const billingDateObj = new Date(billingYear, billingMonth - 1, 2);
+      const todayObj = new Date();
+      const diffDays = Math.ceil((billingDateObj - todayObj) / (1000 * 60 * 60 * 24));
+      
+      const daysElem = document.getElementById('daysRemaining');
+      const formattedBillingDate = `02/${String(billingMonth).padStart(2, '0')}`;
+
+      if (diffDays > 0) daysElem.innerText = `הוצאות ${monthName} • נותרו ${diffDays} ימים לחיוב ב-${formattedBillingDate}`;
+      else if (diffDays === 0) daysElem.innerText = `הוצאות ${monthName} • החיוב מתבצע היום (${formattedBillingDate})!`;
+      else daysElem.innerText = `הוצאות ${monthName} • מועד חיוב: ${formattedBillingDate}`;
+
+      const isFiveDaysBefore = (diffDays <= 5 && diffDays >= 0);
+      document.getElementById('topNoticeBanner').style.display = isFiveDaysBefore ? 'flex' : 'none';
+      document.getElementById('bankTransferBanner').style.display = isFiveDaysBefore ? 'block' : 'none';
+      document.getElementById('cashStarNotice').style.display = isFiveDaysBefore ? 'inline' : 'none';
+
+      const hoaDebtInfo = calculateHoaDebt();
+      document.getElementById('hoaStarNotice').style.display = (isFiveDaysBefore && hoaDebtInfo.debtAmount >= 600) ? 'inline' : 'none';
+    }
+
+    function getGeneralFixedMonthlyDetails(item) {
+      const currentMonthKey = getCurrentMonthKey();
+      const currentMonthNum = appState.selectedMonth;
+      const isDue = !item.isBimonthly || (item.dueMonths && item.dueMonths.includes(currentMonthNum));
+      const mData = (item.monthlyData && item.monthlyData[currentMonthKey]) || null;
+      
+      return {
+        amount: isDue ? (mData ? mData.amount : item.defaultAmount) : 0,
+        isConfirmed: mData ? mData.isConfirmed : false,
+        isDue: isDue
+      };
+    }
+
+    function getIncomeMonthlyDetails(item) {
+      const currentMonthKey = getCurrentMonthKey();
+      const mData = (item.monthlyData && item.monthlyData[currentMonthKey]) || null;
+      return {
+        amount: mData ? mData.amount : item.defaultAmount,
+        isConfirmed: mData ? mData.isConfirmed : false
+      };
+    }
+
+    function openAddEnvelopeModal() {
+      document.getElementById('modalTitle').innerText = "➕ הוספת מעטפה חדשה";
+      document.getElementById('modalBody').innerHTML = `
+        <div style="margin-bottom:12px;">
+          <label style="font-size:13px; font-weight:bold; color:#64748b; display:block; margin-bottom:6px;">שם המעטפה (למשל: בילויים, ביגוד):</label>
+          <input type="text" id="newEnvNameInput" class="search-input" placeholder="הכנס שם מעטפה...">
+        </div>
+        <div style="margin-bottom:16px;">
+          <label style="font-size:13px; font-weight:bold; color:#64748b; display:block; margin-bottom:6px;">תקציב חודשי (בש"ח):</label>
+          <input type="number" id="newEnvBudgetInput" class="search-input" placeholder="למשל: 1000" value="1000">
+        </div>
+        <button onclick="submitNewEnvelope()" style="width:100%; padding:12px; background:var(--primary); color:#fff; border:none; border-radius:10px; font-weight:bold; cursor:pointer;">✓ אישור והוספת מעטפה</button>
+      `;
+      document.getElementById('modal').style.display = 'flex';
+    }
+
+    function submitNewEnvelope() {
+      const name = document.getElementById('newEnvNameInput').value.trim();
+      const budget = parseFloat(document.getElementById('newEnvBudgetInput').value);
+
+      if (!name) return alert('אנא הזן שם למעטפה.');
+      if (isNaN(budget) || budget < 0) return alert('אנא הזן תקציב תקין.');
+
+      const newEnv = {
+        id: 'env_' + Date.now(),
+        name: name,
+        budget: budget
+      };
+
+      appState.envelopes.push(newEnv);
+      closeModal();
+      render();
+    }
+
+    function openEditEnvelopeModal(envId, event) {
+      if (event) event.stopPropagation();
+      const env = appState.envelopes.find(e => e.id === envId);
+      if (!env) return;
+
+      document.getElementById('modalTitle').innerText = `✏️ עריכת מעטפה - ${env.name}`;
+      document.getElementById('modalBody').innerHTML = `
+        <div style="margin-bottom:12px;">
+          <label style="font-size:13px; font-weight:bold; color:#64748b; display:block; margin-bottom:6px;">שם המעטפה:</label>
+          <input type="text" id="editEnvNameInput" class="search-input" value="${env.name}">
+        </div>
+        <div style="margin-bottom:16px;">
+          <label style="font-size:13px; font-weight:bold; color:#64748b; display:block; margin-bottom:6px;">תקציב חודשי (בש"ח):</label>
+          <input type="number" id="editEnvBudgetInput" class="search-input" value="${env.budget}">
+        </div>
+        <div style="display:flex; gap:10px;">
+          <button onclick="saveEnvelopeEdit('${env.id}')" style="flex:1; padding:12px; background:var(--primary); color:#fff; border:none; border-radius:10px; font-weight:bold; cursor:pointer;">✓ שמור שינויים</button>
+          <button onclick="deleteEnvelope('${env.id}')" style="padding:12px; background:#fee2e2; color:#ef4444; border:none; border-radius:10px; font-weight:bold; cursor:pointer;">🗑️ מחק</button>
+        </div>
+      `;
+      document.getElementById('modal').style.display = 'flex';
+    }
+
+    function saveEnvelopeEdit(envId) {
+      const env = appState.envelopes.find(e => e.id === envId);
+      if (!env) return;
+
+      const name = document.getElementById('editEnvNameInput').value.trim();
+      const budget = parseFloat(document.getElementById('editEnvBudgetInput').value);
+
+      if (!name) return alert('אנא הזן שם למעטפה.');
+      if (isNaN(budget) || budget < 0) return alert('אנא הזן תקציב תקין.');
+
+      env.name = name;
+      env.budget = budget;
+
+      closeModal();
+      render();
+    }
+
+    function deleteEnvelope(envId) {
+      if (appState.envelopes.length <= 1) return alert('חייבת להישאר לפחות מעטפה אחת במערכת.');
+
+      if (confirm('האם למחוק מעטפה זו? כל העסקאות המשוייכות אליה יעברו למעטפת הבלת"מים.')) {
+        appState.transactions.forEach(t => {
+          if (t.envId === envId) t.envId = 'var_unplanned';
+        });
+
+        appState.envelopes = appState.envelopes.filter(e => e.id !== envId);
+        closeModal();
+        render();
+      }
+    }
+
+    function openBudgetTransferModal() {
+      document.getElementById('modalTitle').innerText = "⇄ העברת תקציב בין מעטפות";
+
+      let optionsHtml = appState.envelopes.map(e => `<option value="${e.id}">${e.name} (תקציב מקורי: ₪${e.budget})</option>`).join('');
+
+      document.getElementById('modalBody').innerHTML = `
+        <div style="margin-bottom:12px;">
+          <label style="font-size:13px; font-weight:bold; color:#64748b; display:block; margin-bottom:6px;">מאיזו מעטפה להעביר (מעטפת מקור):</label>
+          <select id="transferFromSelect" class="search-input" style="font-weight:bold;">${optionsHtml}</select>
+        </div>
+        <div style="margin-bottom:12px;">
+          <label style="font-size:13px; font-weight:bold; color:#64748b; display:block; margin-bottom:6px;">לאיזו מעטפה להעביר (מעטפת יעד):</label>
+          <select id="transferToSelect" class="search-input" style="font-weight:bold;">${optionsHtml}</select>
+        </div>
+        <div style="margin-bottom:16px;">
+          <label style="font-size:13px; font-weight:bold; color:#64748b; display:block; margin-bottom:6px;">סכום ההעברה/הלוואת תקציב (בש"ח):</label>
+          <input type="number" id="transferAmountInput" class="search-input" placeholder="למשל: 1000" value="1000">
+        </div>
+        <button onclick="executeBudgetTransfer()" style="width:100%; padding:12px; background:var(--primary); color:#fff; border:none; border-radius:10px; font-weight:bold; cursor:pointer;">✓ לבצע העברה לחודש זה</button>
+      `;
+
+      document.getElementById('modal').style.display = 'flex';
+      setTimeout(() => { if(document.getElementById('transferToSelect').options.length > 1) document.getElementById('transferToSelect').selectedIndex = 1; }, 50);
+    }
+
+    function executeBudgetTransfer() {
+      const fromId = document.getElementById('transferFromSelect').value;
+      const toId = document.getElementById('transferToSelect').value;
+      const amt = parseFloat(document.getElementById('transferAmountInput').value);
+
+      if (fromId === toId) return alert('אנא בחר שתי מעטפות שונות.');
+      if (isNaN(amt) || amt <= 0) return alert('אנא הזן סכום תקין להעברה.');
+
+      const currentMonthKey = getCurrentMonthKey();
+      if (!appState.budgetTransferLogs[currentMonthKey]) appState.budgetTransferLogs[currentMonthKey] = [];
+
+      appState.budgetTransferLogs[currentMonthKey].push({ fromId, toId, amount: amt });
+      closeModal();
+      render();
+    }
+
+    function getCalculatedIncomes() {
+      let confirmedIncome = 0;
+      let projectedIncome = 0;
+      appState.incomesList.forEach(inc => {
+        const details = getIncomeMonthlyDetails(inc);
+        projectedIncome += details.amount;
+        if (details.isConfirmed) {
+          confirmedIncome += details.amount;
+        }
+      });
+      return { confirmedIncome, projectedIncome };
+    }
+
+    function render() {
+      updateHeaderDisplay();
+      const searchQuery = document.getElementById('globalSearchInput').value.trim().toLowerCase();
+      const currentMonthKey = getCurrentMonthKey();
+      const logs = appState.budgetTransferLogs[currentMonthKey] || [];
+
+      const transferData = {};
+      appState.envelopes.forEach(e => transferData[e.id] = { net: 0, details: [] });
+
+      logs.forEach(log => {
+        const fromEnv = appState.envelopes.find(e => e.id === log.fromId);
+        const toEnv = appState.envelopes.find(e => e.id === log.toId);
+        if (transferData[log.fromId]) {
+          transferData[log.fromId].net -= log.amount;
+          transferData[log.fromId].details.push(`-₪${log.amount.toLocaleString()} הועבר ל${toEnv ? toEnv.name : ''}`);
+        }
+        if (transferData[log.toId]) {
+          transferData[log.toId].net += log.amount;
+          transferData[log.toId].details.push(`+₪${log.amount.toLocaleString()} הלוואה מ${fromEnv ? fromEnv.name : ''}`);
+        }
+      });
+
+      const varContainer = document.getElementById('variableEnvelopes');
+      varContainer.innerHTML = '';
+      
+      let totalSpentVar = 0;
+      let totalBudgetVar = 0;
+
+      appState.envelopes.forEach(env => {
+        let envTxs = appState.transactions.filter(t => (t.envId === env.id || t.envelopeId === env.id) && isTxInSelectedMonth(t));
+        if (searchQuery) {
+          envTxs = envTxs.filter(t => t.merchant.toLowerCase().includes(searchQuery) || (t.category && t.category.toLowerCase().includes(searchQuery)));
+        }
+
+        const spent = envTxs.reduce((sum, t) => sum + t.amount, 0);
+        const tInfo = transferData[env.id] || { net: 0, details: [] };
+        const adjustedBudget = env.budget + tInfo.net;
+        const rem = adjustedBudget - spent;
+        const pct = Math.min(100, Math.max(0, (spent / (adjustedBudget || 1)) * 100));
+
+        totalSpentVar += spent;
+        totalBudgetVar += env.budget;
+
+        let transferTagsHtml = tInfo.details.map(dText => {
+          const isNegative = dText.startsWith('-');
+          return `<span class="transfer-tag" style="background:${isNegative ? '#fee2e2' : '#e0e7ff'}; color:${isNegative ? '#991b1b' : '#3730a3'};">${dText}</span>`;
+        }).join(' ');
+
+        varContainer.innerHTML += `
+          <div class="card" onclick="openEnvModal('${env.id}')">
+            <div class="card-top">
+              <span class="card-title">
+                ${env.name}
+                <button onclick="openEditEnvelopeModal('${env.id}', event)" class="btn-action" style="font-size:11px; margin-right:8px; padding:2px 6px;">✏️ ערוך</button>
+              </span>
+              <span class="card-target-spent">
+                <span class="card-spent-bold">₪${spent.toLocaleString()}</span> / ₪${adjustedBudget.toLocaleString()}
+              </span>
+            </div>
+            <div class="progress-bg">
+              <div class="progress-bar ${rem < 0 ? 'over' : ''}" style="width: ${pct}%"></div>
+            </div>
+            <div class="card-footer">
+              <span class="rem-text ${rem < 0 ? 'over' : ''}">
+                ${rem < 0 ? 'חריגה: ₪' + Math.abs(rem).toLocaleString() : 'נשאר: ₪' + rem.toLocaleString()}
+              </span>
+              <div>${transferTagsHtml ? transferTagsHtml : '<span>זמין ביום: ₪' + Math.max(0, Math.round(rem / 11)) + '</span>'}</div>
+            </div>
+          </div>
+        `;
+      });
+
+      const otherTxs = appState.transactions.filter(t => (t.envId === 'var_other' || t.envelopeId === 'var_other') && isTxInSelectedMonth(t));
+      const otherSpent = otherTxs.reduce((sum, t) => sum + t.amount, 0);
+      document.getElementById('otherEnvelopeTotalVal').innerText = `₪${otherSpent.toLocaleString()}`;
+
+      let totalGeneralFixed = 0;
+      let totalConfirmedCount = 0;
+      let totalDueCount = 0;
+
+      appState.generalFixedList.forEach(item => {
+        const details = getGeneralFixedMonthlyDetails(item);
+        if (details.isDue) {
+          totalDueCount++;
+          totalGeneralFixed += details.amount;
+          if (details.isConfirmed) totalConfirmedCount++;
+        }
+      });
+
+      document.getElementById('generalFixedTotalVal').innerText = `₪${totalGeneralFixed.toLocaleString()}`;
+      document.getElementById('fixedSummarySubtext').innerText = `${totalConfirmedCount} מתוך ${totalDueCount} נקליטו ונגבו מדף האשראי`;
+
+      const hoaDebtInfo = calculateHoaDebt();
+      document.getElementById('hoaDebtDisplayVal').innerText = `₪${hoaDebtInfo.debtAmount.toLocaleString()}`;
+      document.getElementById('hoaSubtext').innerText = `חוב מצטבר: ₪${hoaDebtInfo.debtAmount.toLocaleString()} (${hoaDebtInfo.monthsCount} חודשים) • שולם עד ${hoaDebtInfo.lastPaidText}`;
+
+      const monthlyCashList = appState.cashWithdrawals.filter(w => w.monthKey === currentMonthKey);
+      const totalCashAmount = monthlyCashList.reduce((s, c) => s + c.amount, 0);
+      const pendingCashCount = monthlyCashList.filter(c => !c.isWithdrawn).length;
+      document.getElementById('cashEnvelopeTotalVal').innerText = `₪${totalCashAmount.toLocaleString()}`;
+      document.getElementById('cashSubtext').innerText = `${monthlyCashList.length} משיכות • ${pendingCashCount > 0 ? pendingCashCount + ' ממתינות למשיכה' : 'כל המזומן נמשך'}`;
+
+      const ddContainer = document.getElementById('directDebitsList');
+      ddContainer.innerHTML = '';
+      let totalDirectDebitsSpent = 0;
+
+      appState.directDebits.forEach(dd => {
+        const mData = dd.monthlyData[currentMonthKey] || { isConfirmed: false, amount: dd.defaultAmount, date: '' };
+        totalDirectDebitsSpent += mData.amount;
+        const isConfirmed = mData.isConfirmed;
+
+        ddContainer.innerHTML += `
+          <div class="card ${isConfirmed ? 'card-direct-debit-confirmed' : 'card-direct-debit-pending'}" onclick="openConfirmDirectDebitModal('${dd.id}')">
+            <div class="card-top">
+              <span class="card-title">${dd.name}</span>
+              <span class="card-spent-bold">₪${mData.amount.toLocaleString()}</span>
+            </div>
+            <div class="card-footer">
+              <span>${mData.date ? 'תאריך: ' + mData.date : 'לחץ לעדכון סכום ותאריך מפורט'}</span>
+              ${isConfirmed ? '<span class="status-badge-confirmed">✓ נגבה בעו"ש</span>' : '<span class="status-badge-pending">⏳ ממתין לחיוב</span>'}
+            </div>
+          </div>
+        `;
+      });
+
+      const incomes = getCalculatedIncomes();
+      document.getElementById('incomeVal').innerText = `₪${incomes.confirmedIncome.toLocaleString()} (${incomes.projectedIncome.toLocaleString()} ₪ צפוי)`;
+
+      const totalSavingsTarget = appState.savingsList.reduce((sum, s) => sum + s.target, 0);
+      const totalSavingsDone = appState.savingsList.filter(s => s.isDone).reduce((sum, s) => sum + s.target, 0);
+      document.getElementById('savingsDisplay').innerHTML = `
+        <span class="card-target-spent">
+          <span class="card-spent-bold" style="color:var(--primary)">₪${totalSavingsDone.toLocaleString()}</span> / ₪${totalSavingsTarget.toLocaleString()}
+        </span>
+      `;
+      document.getElementById('savingsProgressBar').style.width = `${Math.min(100, (totalSavingsDone / (totalSavingsTarget || 1)) * 100)}%`;
+      document.getElementById('savingsSubtext').innerText = `${appState.savingsList.filter(s => s.isDone).length} מתוך ${appState.savingsList.length} ירדו במלאות`;
+
+      updateBankTransferForecast();
+
+      // החרגת מעטפת שונות (חיובים מחיסכון) מחישוב הנטו השוטף
+      const totalOverallExpensesActual = totalSpentVar + totalGeneralFixed + totalDirectDebitsSpent + totalCashAmount;
+      const totalOverallExpensesProjected = totalBudgetVar + totalGeneralFixed + totalDirectDebitsSpent + totalCashAmount;
+
+      const netBalanceActual = incomes.confirmedIncome - totalOverallExpensesActual;
+      const netBalanceProjected = incomes.projectedIncome - totalOverallExpensesProjected;
+
+      const netBannerElem = document.getElementById('netBalanceBanner');
+
+      if (incomes.confirmedIncome === 0) {
+        netBannerElem.className = 'net-banner-detailed negative';
+        document.getElementById('netBalanceValue').innerHTML = `
+          <div style="display:flex; flex-direction:column; align-items:flex-end;">
+            <span style="font-size:16px; font-weight:800; color:#991b1b;">-₪${totalOverallExpensesActual.toLocaleString()} (טרם אושרו הכנסות בפועל)</span>
+            <span style="font-size:12px; color:#475569; font-weight:bold; margin-top:2px;">צפי סוף חודש: <b>${netBalanceProjected >= 0 ? '+₪' + netBalanceProjected.toLocaleString() : '-₪' + Math.abs(netBalanceProjected).toLocaleString()}</b></span>
+          </div>
+        `;
+      } else if (netBalanceActual >= 0) {
+        netBannerElem.className = 'net-banner-detailed positive';
+        document.getElementById('netBalanceValue').innerHTML = `
+          <div style="display:flex; flex-direction:column; align-items:flex-end;">
+            <span style="font-size:16px; font-weight:800; color:#166534;">+₪${netBalanceActual.toLocaleString()} (עודף בפועל כרגע)</span>
+            <span style="font-size:12px; color:#475569; font-weight:bold; margin-top:2px;">צפי סוף חודש: <b>${netBalanceProjected >= 0 ? '+₪' + netBalanceProjected.toLocaleString() : '-₪' + Math.abs(netBalanceProjected).toLocaleString()}</b></span>
+          </div>
+        `;
+      } else {
+        netBannerElem.className = 'net-banner-detailed negative';
+        document.getElementById('netBalanceValue').innerHTML = `
+          <div style="display:flex; flex-direction:column; align-items:flex-end;">
+            <span style="font-size:16px; font-weight:800; color:#991b1b;">-₪${Math.abs(netBalanceActual).toLocaleString()} (חריגה בפועל כרגע)</span>
+            <span style="font-size:12px; color:#475569; font-weight:bold; margin-top:2px;">צפי סוף חודש: <b>${netBalanceProjected >= 0 ? '+₪' + netBalanceProjected.toLocaleString() : '-₪' + Math.abs(netBalanceProjected).toLocaleString()}</b></span>
+          </div>
+        `;
+      }
+
+      document.getElementById('totalRemaining').innerText = `ונשאר ₪${(totalBudgetVar - totalSpentVar).toLocaleString()} מכלל המעטפות`;
+
+      if (window.saveStateToCloud) window.saveStateToCloud();
+    }
+
+    function openNetBalanceModal() {
+      const monthName = MONTH_NAMES[appState.selectedMonth - 1];
+      const monthYearStr = `${monthName} ${appState.selectedYear}`;
+      const currentMonthKey = getCurrentMonthKey();
+
+      let totalIncomeConfirmed = 0;
+      let totalIncomeProjected = 0;
+      let incomeRowsHtml = '';
+
+      appState.incomesList.forEach(inc => {
+        const details = getIncomeMonthlyDetails(inc);
+        totalIncomeProjected += details.amount;
+        if (details.isConfirmed) totalIncomeConfirmed += details.amount;
+
+        const statusTag = details.isConfirmed 
+          ? `<span style="color:#166534; font-weight:bold;">(✓ נכנס לבנק)</span>`
+          : `<span style="color:#dc2626; font-weight:bold;">(⏳ טרם אושר)</span>`;
+
+        incomeRowsHtml += `
+          <div class="net-breakdown-row">
+            <span>🔹 ${inc.source} ${inc.bank === 'Pepper' ? '(Pepper)' : '(הבינלאומי)'} ${statusTag}</span>
+            <span style="font-weight:bold; color:${details.isConfirmed ? '#166534' : '#94a3b8'};">
+              +₪${details.amount.toLocaleString()}
+            </span>
+          </div>
+        `;
+      });
+
+      let totalDirectDebits = 0;
+      let ddRowsHtml = '';
+      appState.directDebits.forEach(dd => {
+        const mData = dd.monthlyData[currentMonthKey] || { amount: dd.defaultAmount };
+        totalDirectDebits += mData.amount;
+        ddRowsHtml += `
+          <div class="net-breakdown-row">
+            <span>🔹 ${dd.name} (הוראת קבע עו"ש)</span>
+            <span style="font-weight:bold; color:#991b1b;">-₪${mData.amount.toLocaleString()}</span>
+          </div>
+        `;
+      });
+
+      const currentMonthTxs = appState.transactions.filter(t => isTxInSelectedMonth(t));
+      let varEnvelopesRowsHtml = '';
+      let totalSpentVar = 0;
+
+      appState.envelopes.forEach(env => {
+        const spent = currentMonthTxs.filter(t => (t.envId === env.id || t.envelopeId === env.id)).reduce((s, t) => s + t.amount, 0);
+        totalSpentVar += spent;
+        varEnvelopesRowsHtml += `
+          <div class="net-breakdown-row">
+            <span>🔹 מעטפת ${env.name} (ביצוע בפועל)</span>
+            <span style="font-weight:bold; color:#991b1b;">-₪${spent.toLocaleString()} (מתוך תקציב ₪${env.budget.toLocaleString()})</span>
+          </div>
+        `;
+      });
+
+      const otherSpent = currentMonthTxs.filter(t => (t.envId === 'var_other' || t.envelopeId === 'var_other')).reduce((s, t) => s + t.amount, 0);
+      if (otherSpent > 0) {
+        varEnvelopesRowsHtml += `
+          <div class="net-breakdown-row" style="opacity: 0.75;">
+            <span>🔹 שונות (חיובים מחיסכון - מוחרג מחישוב הנטו)</span>
+            <span style="font-weight:bold; color:#7e22ce; text-decoration: line-through;">-₪${otherSpent.toLocaleString()}</span>
+          </div>
+        `;
+      }
+
+      let totalGeneralFixed = 0;
+      let fixedRowsHtml = '';
+      appState.generalFixedList.forEach(item => {
+        const d = getGeneralFixedMonthlyDetails(item);
+        if (d.isDue) {
+          totalGeneralFixed += d.amount;
+          fixedRowsHtml += `
+            <div class="net-breakdown-row">
+              <span>🔹 ${item.name}</span>
+              <span style="font-weight:bold; color:#991b1b;">-₪${d.amount.toLocaleString()}</span>
+            </div>
+          `;
+        }
+      });
+
+      const cashList = appState.cashWithdrawals.filter(w => w.monthKey === currentMonthKey);
+      const totalCash = cashList.reduce((s, c) => s + c.amount, 0);
+      let cashRowsHtml = '';
+      if (cashList.length > 0) {
+        cashList.forEach(c => {
+          cashRowsHtml += `
+            <div class="net-breakdown-row">
+              <span>🔹 מזומן: ${c.title}</span>
+              <span style="font-weight:bold; color:#991b1b;">-₪${c.amount.toLocaleString()}</span>
+            </div>
+          `;
+        });
+      } else {
+        cashRowsHtml = `<div class="net-breakdown-row"><span>אין משיכות מזומן בחודש זה</span><span>₪0</span></div>`;
+      }
+
+      const totalSavingsTarget = appState.savingsList.reduce((sum, s) => sum + s.target, 0);
+      const totalSavingsDone = appState.savingsList.filter(s => s.isDone).reduce((sum, s) => sum + s.target, 0);
+      let savingsRowsHtml = '';
+      appState.savingsList.forEach(s => {
+        savingsRowsHtml += `
+          <div class="net-breakdown-row">
+            <span>🔹 ${s.name} ${s.isDone ? ' (✓ ירד)' : ' (⏳ בתכנון)'}</span>
+            <span style="font-weight:bold; color:#6b21a8;">₪${s.target.toLocaleString()}</span>
+          </div>
+        `;
+      });
+
+      // החרגת "שונות" מחישוב סך הכל הוצאות ומאזן נטו בפועל
+      const totalOverallExpensesActual = totalSpentVar + totalGeneralFixed + totalDirectDebits + totalCash;
+      const totalBudgetVar = appState.envelopes.reduce((s, e) => s + e.budget, 0);
+      const totalOverallExpensesProjected = totalBudgetVar + totalGeneralFixed + totalDirectDebits + totalCash;
+
+      const netActual = totalIncomeConfirmed - totalOverallExpensesActual;
+      const netProjected = totalIncomeProjected - totalOverallExpensesProjected;
+
+      document.getElementById('modalTitle').innerText = `📐 חישוב מאזן שקוף - ${monthYearStr}`;
+      
+      let html = `
+        <div style="background:#f8fafc; padding:12px; border-radius:12px; border:1px solid #e2e8f0; margin-bottom:14px;">
+          <div style="font-size:12px; font-weight:bold; color:#64748b; margin-bottom:6px;">🎨 מקרא צבעים וחישוב מבוסס אישור:</div>
+          <div style="display:flex; gap:6px; flex-wrap:wrap; font-size:11px; font-weight:bold;">
+            <span style="background:#dcfce7; color:#15803d; padding:3px 8px; border-radius:6px;">🟢 הכנסות מאושרות</span>
+            <span style="background:#fee2e2; color:#991b1b; padding:3px 8px; border-radius:6px;">🔴 הוצאות בפועל</span>
+            <span style="background:#f3e8ff; color:#6b21a8; padding:3px 8px; border-radius:6px;">🟣 הפרשה לחסכונות</span>
+          </div>
+        </div>
+
+        <div class="net-breakdown-card green">
+          <div style="font-weight:800; font-size:14px; margin-bottom:6px;">💰 1. הכנסות נכנסות (🟢 +)</div>
+          ${incomeRowsHtml}
+          <div class="net-breakdown-row total">
+            <span>הכנסות שאושר שהתקבלו בפועל (V):</span>
+            <span style="color:${totalIncomeConfirmed > 0 ? '#166534' : '#dc2626'}">+₪${totalIncomeConfirmed.toLocaleString()}</span>
+          </div>
+          <div class="net-breakdown-row" style="font-size:12px; color:#64748b; margin-top:4px;">
+            <span>סה"כ הכנסות צפויות/מתוכננות:</span>
+            <span>+₪${totalIncomeProjected.toLocaleString()}</span>
+          </div>
+        </div>
+
+        <div class="net-breakdown-card red">
+          <div style="font-weight:800; font-size:14px; margin-bottom:6px;">🏦 2. הוראות קבע בעו"ש (משכנתא + גן) (🔴 -)</div>
+          ${ddRowsHtml}
+          <div class="net-breakdown-row total">
+            <span>סה"כ הוראות קבע בעו"ש:</span>
+            <span>-₪${totalDirectDebits.toLocaleString()}</span>
+          </div>
+        </div>
+
+        <div class="net-breakdown-card red">
+          <div style="font-weight:800; font-size:14px; margin-bottom:6px;">🛒 3. מעטפות משתנות, בלת"מים ורכב (🔴 -)</div>
+          ${varEnvelopesRowsHtml}
+          <div class="net-breakdown-row total">
+            <span>סה"כ הוצאות משתנות בפועל (ללא שונות):</span>
+            <span>-₪${totalSpentVar.toLocaleString()}</span>
+          </div>
+        </div>
+
+        <div class="net-breakdown-card red">
+          <div style="font-weight:800; font-size:14px; margin-bottom:6px;">📑 4. קבועות באשראי (חשבונות, תקשורת, ביטוחים) (🔴 -)</div>
+          ${fixedRowsHtml}
+          <div class="net-breakdown-row total">
+            <span>סה"כ קבועות באשראי:</span>
+            <span>-₪${totalGeneralFixed.toLocaleString()}</span>
+          </div>
+        </div>
+
+        <div class="net-breakdown-card red">
+          <div style="font-weight:800; font-size:14px; margin-bottom:6px;">💵 5. משיכות מזומן (בייביסיטר/אירועים) (🔴 -)</div>
+          ${cashRowsHtml}
+          <div class="net-breakdown-row total">
+            <span>סה"כ מזומן:</span>
+            <span>-₪${totalCash.toLocaleString()}</span>
+          </div>
+        </div>
+
+        <div class="net-breakdown-card purple">
+          <div style="font-weight:800; font-size:14px; margin-bottom:6px;">🟣 6. יעד הפרשה לחסכונות (Pepper)</div>
+          ${savingsRowsHtml}
+          <div class="net-breakdown-row total">
+            <span>יעד חסכונות כולל (${totalSavingsDone.toLocaleString()} ₪ בוצע):</span>
+            <span>₪${totalSavingsTarget.toLocaleString()}</span>
+          </div>
+        </div>
+
+        <div style="background:${netActual >= 0 ? '#f0fdf4' : '#fef2f2'}; border:2px solid ${netActual >= 0 ? '#166534' : '#ef4444'}; padding:14px; border-radius:14px; margin-top:14px;">
+          <div style="font-size:13px; font-weight:bold; color:#475569; margin-bottom:4px;">משוואת המאזן בפועל (על בסיס הכנסות מאושרות בלבד וללא מעטפת שונות):</div>
+          <div style="font-size:14px; font-weight:700; color:#0f172a; margin-bottom:8px; dir:ltr; text-align:right;">
+            ₪${totalIncomeConfirmed.toLocaleString()} (הכנסות מאושרות) − ₪${totalOverallExpensesActual.toLocaleString()} (הוצאות בפועל)
+          </div>
+          <div style="font-size:17px; font-weight:900; color:${netActual >= 0 ? '#166534' : '#991b1b'}; display:flex; justify-content:space-between; align-items:center;">
+            <span>הפרש נטו בפועל כרגע:</span>
+            <span>${netActual >= 0 ? '+₪' + netActual.toLocaleString() : '-₪' + Math.abs(netActual).toLocaleString()}</span>
+          </div>
+          <div style="font-size:12px; font-weight:bold; color:#64748b; margin-top:8px; border-top:1px dashed #cbd5e1; padding-top:6px; display:flex; justify-content:space-between;">
+            <span>תחזית מאזן צפוי לסוף החודש (תקציב מלא + הכנסות צפויות):</span>
+            <span style="color:${netProjected >= 0 ? '#166534' : '#dc2626'}">${netProjected >= 0 ? '+₪' + netProjected.toLocaleString() : '-₪' + Math.abs(netProjected).toLocaleString()}</span>
+          </div>
+        </div>
+      `;
+
+      document.getElementById('modalBody').innerHTML = html;
+      document.getElementById('modal').style.display = 'flex';
+    }
+
+    function updateBankTransferForecast() {
+      const currentMonthKey = getCurrentMonthKey();
+      const currentMonthTxs = appState.transactions.filter(t => isTxInSelectedMonth(t));
+
+      const pepperCardSpent = currentMonthTxs.filter(t => t.isPepper).reduce((s, t) => s + t.amount, 0);
+      const israCardSpent = currentMonthTxs.filter(t => !t.isPepper && t.envId !== 'var_other' && t.envelopeId !== 'var_other').reduce((s, t) => s + t.amount, 0);
+      
+      let israFixedSpent = 0;
+      appState.generalFixedList.forEach(item => {
+        const details = getGeneralFixedMonthlyDetails(item);
+        if (details.isDue && item.bank !== 'Pepper') israFixedSpent += details.amount;
+      });
+
+      let israDirectDebits = 0;
+      appState.directDebits.forEach(dd => {
+        const mData = dd.monthlyData[currentMonthKey] || { amount: dd.defaultAmount };
+        if (dd.bank !== 'Pepper') israDirectDebits += mData.amount;
+      });
+
+      let pepperIncomeAvailable = 0;
+      let israIncomeAvailable = 0;
+
+      appState.incomesList.forEach(inc => {
+        const details = getIncomeMonthlyDetails(inc);
+        if (inc.bank === 'Pepper') {
+          if (!inc.isDelayedAfterBilling) pepperIncomeAvailable += details.amount;
+        } else {
+          israIncomeAvailable += details.amount;
+        }
+      });
+
+      const cashNeeded = appState.cashWithdrawals.filter(w => w.monthKey === currentMonthKey).reduce((s, c) => s + c.amount, 0);
+      const totalIsraExpenses = israCardSpent + israFixedSpent + israDirectDebits + cashNeeded;
+      const israNet = israIncomeAvailable - totalIsraExpenses;
+      const pepperNet = pepperIncomeAvailable - pepperCardSpent;
+
+      const bannerElem = document.getElementById('bankTransferBanner');
+      const textElem = document.getElementById('bankTransferText');
+
+      if (pepperNet < 0) {
+        const neededForPepper = Math.abs(pepperNet);
+        if (israNet >= neededForPepper) {
+          bannerElem.className = 'bank-transfer-banner';
+          textElem.innerHTML = `💡 להעביר <b>₪${neededForPepper.toLocaleString()}</b> מבנק הבינלאומי לבנק Pepper לכיסוי חיוב האשראי.`;
+        } else {
+          const savingsNeeded = neededForPepper - Math.max(0, israNet);
+          bannerElem.className = 'bank-transfer-banner warning';
+          textElem.innerHTML = `🚨 <b>חריגה בתקציב:</b> להעביר ₪${Math.max(0, israNet).toLocaleString()} מהבינלאומי לפייפר + למשוך <b>₪${savingsNeeded.toLocaleString()}</b> מחיסכון בפייפר בעקבות חריגה.`;
+        }
+      } else {
+        bannerElem.className = 'bank-transfer-banner';
+        textElem.innerHTML = `✓ העו"ש בבנק Pepper מבוסה היטב לחודש זה (עודף של ₪${pepperNet.toLocaleString()}).`;
+      }
+    }
+
+    function openTransferForecastModal() {
+      document.getElementById('modalTitle').innerText = "🔍 חישוב שקוף - צפי העברות בנקים";
+      updateBankTransferForecast();
+      document.getElementById('modal').style.display = 'flex';
+    }
+
+    function openConfirmDirectDebitModal(id) {
+      const dd = appState.directDebits.find(d => d.id === id);
+      if (!dd) return;
+
+      const currentMonthKey = getCurrentMonthKey();
+      const defaultDateForMonth = `${appState.selectedYear}-${String(appState.selectedMonth).padStart(2, '0')}-02`;
+      const mData = dd.monthlyData[currentMonthKey] || { isConfirmed: false, amount: dd.defaultAmount, date: defaultDateForMonth };
+
+      document.getElementById('modalTitle').innerText = `אישור חיוב בעו"ש - ${dd.name}`;
+      document.getElementById('modalBody').innerHTML = `
+        <div style="margin-bottom:16px;">
+          <label style="font-size:13px; font-weight:bold; color:#64748b; display:block; margin-bottom:6px;">סכום מדויק שנגבה בעו"ש בחודש זה (בש"ח):</label>
+          <input type="number" id="ddAmountInput" class="search-input" value="${mData.amount}">
+        </div>
+        <div style="margin-bottom:16px;">
+          <label style="font-size:13px; font-weight:bold; color:#64748b; display:block; margin-bottom:6px;">תאריך חיוב בפועל:</label>
+          <input type="date" id="ddDateInput" class="search-input" value="${mData.date || defaultDateForMonth}">
+        </div>
+        <div style="display:flex; gap:10px;">
+          <button onclick="saveDirectDebitConfirmation('${dd.id}', true)" style="flex:1; padding:12px; background:var(--success); color:#fff; border:none; border-radius:10px; font-weight:bold; cursor:pointer;">✓ סמן כנגבה בהצלחה</button>
+          <button onclick="saveDirectDebitConfirmation('${dd.id}', false)" style="padding:12px; background:#f1f5f9; color:#64748b; border:none; border-radius:10px; font-weight:bold; cursor:pointer;">החזר לממתין</button>
+        </div>
+      `;
+      document.getElementById('modal').style.display = 'flex';
+    }
+
+    function saveDirectDebitConfirmation(id, confirmStatus) {
+      const dd = appState.directDebits.find(d => d.id === id);
+      if (!dd) return;
+
+      const currentMonthKey = getCurrentMonthKey();
+      const amt = parseFloat(document.getElementById('ddAmountInput').value);
+      dd.monthlyData[currentMonthKey] = {
+        isConfirmed: confirmStatus,
+        amount: !isNaN(amt) ? amt : dd.defaultAmount,
+        date: document.getElementById('ddDateInput').value
+      };
+
+      closeModal();
+      render();
+    }
+
+    function addDirectDebitPrompt() {
+      const name = prompt('שם הוראת הקבע (למשל: שכירות, חוג):');
+      if (!name) return;
+      const amount = parseFloat(prompt(`סכום חיוב עבור ${name}:`, '0')) || 0;
+
+      appState.directDebits.push({
+        id: 'dd_' + Date.now(),
+        name: name,
+        defaultAmount: amount,
+        defaultDay: 2,
+        bank: 'International',
+        monthlyData: {}
+      });
+      render();
+    }
+
+    function openHoaModal() {
+      document.getElementById('modalTitle').innerText = "🏠 תשלומי וועד הבית";
+      const debtInfo = calculateHoaDebt();
+
+      document.getElementById('modalBody').innerHTML = `
+        <div style="background:#f0f9ff; padding:14px; border-radius:12px; border:1px solid #bae6fd; margin-bottom:16px;">
+          <div style="font-size:14px; font-weight:bold; color:#0369a1;">חוב מצטבר נוכחי: ₪${debtInfo.debtAmount.toLocaleString()}</div>
+          <div style="font-size:12px; color:#0284c7; margin-top:4px;">
+            מחושב עבור <b>${debtInfo.monthsCount}</b> חודשים (200 ₪/חודש)<br>
+            שולם לאחרונה עד: <b>${debtInfo.lastPaidText} כולל</b>
+          </div>
+        </div>
+        <div style="margin-bottom:16px;">
+          <label style="font-size:13px; font-weight:bold; color:#64748b; display:block; margin-bottom:6px;">ביצוע תשלום לוועד הבית (בש"ח):</label>
+          <input type="number" id="hoaPaymentInput" class="search-input" value="${debtInfo.debtAmount}">
+        </div>
+        <button onclick="submitHoaPayment()" style="width:100%; padding:12px; background:var(--primary); color:#fff; border:none; border-radius:10px; font-weight:bold; cursor:pointer;">✓ אישור תשלום לוועד ועדכון החוב</button>
+      `;
+      document.getElementById('modal').style.display = 'flex';
+    }
+
+    function submitHoaPayment() {
+      const amt = parseFloat(document.getElementById('hoaPaymentInput').value);
+      if (isNaN(amt) || amt <= 0) return alert('אנא הזן סכום תקין.');
+
+      const monthsPaid = Math.floor(amt / appState.hoaState.monthlyCost);
+      if (monthsPaid < 1) return alert('הסכום קטן מעלות חודש אחד (200 ש"ח).');
+
+      let newMonth = appState.hoaState.lastPaidMonth + monthsPaid;
+      let newYear = appState.hoaState.lastPaidYear;
+      while (newMonth > 12) { newMonth -= 12; newYear += 1; }
+
+      appState.hoaState.lastPaidMonth = newMonth;
+      appState.hoaState.lastPaidYear = newYear;
+
+      appState.transactions.push({
+        id: Date.now(),
+        envId: 'var_unplanned',
+        merchant: `תשלום וועד בית (שולם עד ${MONTH_NAMES[newMonth - 1]} ${newYear})`,
+        amount: amt,
+        date: new Date().toLocaleDateString('he-IL'),
+        monthKey: getCurrentMonthKey(),
+        category: 'וועד בית'
+      });
+
+      alert(`בהצלחה! שולמו ₪${amt.toLocaleString()} עבור ${monthsPaid} חודשים.`);
+      closeModal();
+      render();
+    }
+
+    function openCashModal() {
+      document.getElementById('modalTitle').innerText = "💵 משיכת מזומן";
+      const currentMonthKey = getCurrentMonthKey();
+      const monthlyList = appState.cashWithdrawals.filter(w => w.monthKey === currentMonthKey);
+
+      let html = `
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+          <span style="font-size:13px; font-weight:bold; color:#065f46;">ניהול משיכות מזומן, בייביסיטר ואירועים:</span>
+          <button onclick="openAddCashModal()" style="font-size:12px; background:#d1fae5; color:#065f46; border:none; padding:6px 12px; border-radius:8px; font-weight:bold; cursor:pointer;">+ הוסף משיכה</button>
+        </div>
+      `;
+
+      if (monthlyList.length === 0) {
+        html += `<div style="text-align:center; color:#94a3b8; padding:20px;">אין משיכות מזומן מתוכננות לחודש זה</div>`;
+      } else {
+        monthlyList.forEach((c) => {
+          html += `
+            <div class="savings-item ${c.isWithdrawn ? 'completed' : ''}">
+              <div style="display:flex; align-items:center; gap:10px;">
+                <input type="checkbox" class="savings-checkbox" ${c.isWithdrawn ? 'checked' : ''} onchange="toggleCashWithdrawalStatus('${c.id}')">
+                <div>
+                  <div style="font-weight:bold; color:#0f172a;">${c.title}</div>
+                  <div style="font-size:11px; color:#64748b;">${c.isWithdrawn ? '✓ נמשך במזומן' : '⏳ ממתין למשיכה'} ${c.fee ? ' • כולל עמלה ₪' + c.fee : ''}</div>
+                </div>
+              </div>
+              <div style="display:flex; align-items:center; gap:8px;">
+                <span style="font-weight:bold; color:#0f172a;">₪${c.amount.toLocaleString()}</span>
+                <button class="btn-delete-item" onclick="removeCashWithdrawal('${c.id}')">🗑️</button>
+              </div>
+            </div>
+          `;
+        });
+      }
+
+      document.getElementById('modalBody').innerHTML = html;
+      document.getElementById('modal').style.display = 'flex';
+    }
+
+    function openAddCashModal() {
+      document.getElementById('modalTitle').innerText = "➕ הוספת משיכת מזומן חדשה";
+      
+      document.getElementById('modalBody').innerHTML = `
+        <div style="margin-bottom:12px;">
+          <label style="font-size:13px; font-weight:bold; color:#64748b; display:block; margin-bottom:6px;">עבור מה המזומן? (תיאור המשיכה):</label>
+          <input type="text" id="cashTitleInput" class="search-input" placeholder="למשל: בייביסיטר, חתונה של אריאל">
+        </div>
+        <div style="margin-bottom:12px;">
+          <label style="font-size:13px; font-weight:bold; color:#64748b; display:block; margin-bottom:6px;">סכום מזומן נדרש (בש"ח):</label>
+          <input type="number" id="cashAmountInput" class="search-input" placeholder="למשל: 300">
+        </div>
+        <div style="margin-bottom:12px;">
+          <label style="font-size:13px; font-weight:bold; color:#64748b; display:block; margin-bottom:6px;">האם הכסף כבר נמשך בפועל בכספומט?</label>
+          <select id="cashIsDrawnSelect" class="search-input" style="font-weight:bold;" onchange="toggleCashFeeVisibility()">
+            <option value="false">לא (ממתין למשיכה)</option>
+            <option value="true">כן (נמשך בפועל בכספומט)</option>
+          </select>
+        </div>
+        <div id="cashFeeContainer" style="margin-bottom:16px; display:none;">
+          <label style="font-size:13px; font-weight:bold; color:#64748b; display:block; margin-bottom:6px;">עמלת כספומט / משיכה (בש"ח):</label>
+          <input type="number" id="cashFeeInput" class="search-input" value="0" placeholder="0">
+        </div>
+        <button onclick="submitNewCashWithdrawal()" style="width:100%; padding:12px; background:var(--primary); color:#fff; border:none; border-radius:10px; font-weight:bold; cursor:pointer;">✓ אישור והוספת משיכה</button>
+      `;
+      document.getElementById('modal').style.display = 'flex';
+    }
+
+    function toggleCashFeeVisibility() {
+      const isDrawn = document.getElementById('cashIsDrawnSelect').value === 'true';
+      document.getElementById('cashFeeContainer').style.display = isDrawn ? 'block' : 'none';
+    }
+
+    function submitNewCashWithdrawal() {
+      const title = document.getElementById('cashTitleInput').value.trim();
+      const baseAmt = parseFloat(document.getElementById('cashAmountInput').value);
+      const isDrawn = document.getElementById('cashIsDrawnSelect').value === 'true';
+      const fee = isDrawn ? (parseFloat(document.getElementById('cashFeeInput').value) || 0) : 0;
+
+      if (!title) return alert('אנא הזן תיאור עבור משיכת המזומן.');
+      if (isNaN(baseAmt) || baseAmt <= 0) return alert('אנא הזן סכום תקין.');
+
+      appState.cashWithdrawals.push({
+        id: 'cash_' + Date.now(),
+        monthKey: getCurrentMonthKey(),
+        title: title,
+        baseAmount: baseAmt,
+        fee: fee,
+        amount: baseAmt + fee,
+        isWithdrawn: isDrawn
+      });
+
+      render();
+      openCashModal();
+    }
+
+    function toggleCashWithdrawalStatus(cashId) {
+      const item = appState.cashWithdrawals.find(c => c.id === cashId);
+      if (!item) return;
+
+      item.isWithdrawn = !item.isWithdrawn;
+      if (item.isWithdrawn && item.fee === 0) {
+        const feeInput = prompt('האם הייתה עמלת משיכה בכספומט?\nהזן סכום עמלה בש"ח (או 0 במידה ולא הייתה עמלה):', '6.90');
+        const fee = parseFloat(feeInput) || 0;
+        item.fee = fee;
+        item.amount = item.baseAmount + fee;
+      }
+
+      render();
+      openCashModal();
+    }
+
+    function removeCashWithdrawal(cashId) {
+      appState.cashWithdrawals = appState.cashWithdrawals.filter(c => c.id !== cashId);
+      render();
+      openCashModal();
+    }
+
+    function exportCustomExcelWorkbook() {
+      const monthName = MONTH_NAMES[appState.selectedMonth - 1];
+      const monthYearStr = `${monthName} ${appState.selectedYear}`;
+      const currentMonthKey = getCurrentMonthKey();
+      const wb = XLSX.utils.book_new();
+
+      function setupRTLSheet(sheet, widths) {
+        sheet['!views'] = [{ RTL: true, rightToLeft: true }];
+        sheet['!sheetPr'] = { wsViews: [{ rightToLeft: true }] };
+        if (widths) sheet['!cols'] = widths.map(w => ({ wch: w }));
+      }
+
+      const incomes = getCalculatedIncomes();
+
+      const currentMonthTxs = appState.transactions.filter(t => isTxInSelectedMonth(t));
+      const totalSpentVar = currentMonthTxs.filter(t => t.envId !== 'var_other' && t.envelopeId !== 'var_other').reduce((sum, t) => sum + t.amount, 0);
+
+      let totalGeneralFixed = 0;
+      appState.generalFixedList.forEach(item => {
+        const d = getGeneralFixedMonthlyDetails(item);
+        if (d.isDue) totalGeneralFixed += d.amount;
+      });
+
+      let totalDirectDebits = 0;
+      appState.directDebits.forEach(dd => {
+        const mData = dd.monthlyData[currentMonthKey] || { amount: dd.defaultAmount };
+        totalDirectDebits += mData.amount;
+      });
+
+      const cashList = appState.cashWithdrawals.filter(w => w.monthKey === currentMonthKey);
+      const totalCash = cashList.reduce((sum, c) => sum + c.amount, 0);
+      const totalExpenses = totalSpentVar + totalGeneralFixed + totalDirectDebits + totalCash;
+      const netResultActual = incomes.confirmedIncome - totalExpenses;
+
+      const summaryData = [
+        ["דוח ריכוז תקציב ומאזן חודשי", "", monthYearStr],
+        [],
+        ["תחום / קטגוריה", "סכום כולל (ש\"ח)", "הערות / סטטוס"],
+        ["הכנסות שאושר שהתקבלו בפועל", incomes.confirmedIncome, `צפי מתוכנן מלא: ₪${incomes.projectedIncome.toLocaleString()}`],
+        ["מעטפות משתנות ורכב (ללא שונות)", totalSpentVar, "משתנות, בלת\"מים ודלק"],
+        ["מעטפת קבועות באשראי", totalGeneralFixed, "תקשורת, ארנונה, חשמל וביטוחים"],
+        ["הוראות קבע בעו\"ש", totalDirectDebits, "משכנתא וגן של בניה"],
+        ["משיכות מזומן", totalCash, "בייביסיטר, אירועים ועמלות"],
+        [],
+        ["סה\"כ מצטבר הוצאות שוטפות בפועל", totalExpenses, "סיכום כלל ההוצאות והמשיכות (ללא שונות)"],
+        ["מאזן נטו בפועל כרגע", netResultActual, netResultActual >= 0 ? "עודף חיובי" : "חריגה / טרם נקלטו הכנסות"]
+      ];
+
+      const wsSummary = XLSX.utils.aoa_to_sheet(summaryData);
+      setupRTLSheet(wsSummary, [32, 20, 35]);
+      XLSX.utils.book_append_sheet(wb, wsSummary, "סיכום ומאזן");
+
+      const sheet2Data = [
+        ["פירוט עסקאות - מעטפות משתנות ורכב", "", "", "", monthYearStr],
+        [],
+        ["בית עסק", "מעטפת / קטגוריה", "סכום (ש\"ח)", "תאריך", "בנק"]
+      ];
+
+      let runningVarTotal = 0;
+      currentMonthTxs.forEach(t => {
+        const envId = t.envId || t.envelopeId;
+        const envObj = appState.envelopes.find(e => e.id === envId);
+        const envName = envObj ? envObj.name : (envId === 'var_other' ? 'שונות (חיסכון - מוחרג)' : 'משתנות');
+        sheet2Data.push([t.merchant, envName, t.amount, t.date || '', t.isPepper ? 'Pepper' : 'הבינלאומי']);
+        if (envId !== 'var_other') runningVarTotal += t.amount;
+      });
+
+      sheet2Data.push([]);
+      sheet2Data.push(["סה\"כ מצטבר משתנות ורכב (ללא שונות)", "", runningVarTotal, "", ""]);
+
+      const wsVar = XLSX.utils.aoa_to_sheet(sheet2Data);
+      setupRTLSheet(wsVar, [32, 22, 18, 16, 16]);
+      XLSX.utils.book_append_sheet(wb, wsVar, "משתנות ורכב");
+
+      const sheet3Data = [
+        ["פירוט קבועות מאשראי והוראות קבע בעו\"ש", "", "", "", monthYearStr],
+        [],
+        ["שם ספק / חיוב", "סוג חיוב", "סכום (ש\"ח)", "בנק", "סטטוס גבייה"]
+      ];
+
+      let runningFixedTotal = 0;
+      appState.generalFixedList.forEach(item => {
+        const d = getGeneralFixedMonthlyDetails(item);
+        if (d.isDue) {
+          sheet3Data.push([item.name, "קבועה באשראי", d.amount, item.bank === 'Pepper' ? 'Pepper' : 'הבינלאומי', d.isConfirmed ? '✓ נקלט באשראי' : '⏳ ממתין']);
+          runningFixedTotal += d.amount;
+        }
+      });
+
+      appState.directDebits.forEach(dd => {
+        const mData = dd.monthlyData[currentMonthKey] || { isConfirmed: false, amount: dd.defaultAmount };
+        sheet3Data.push([dd.name, "הוראת קבע בעו\"ש", mData.amount, "הבינלאומי", mData.isConfirmed ? '✓ נגבה בעו"ש' : '⏳ ממתין']);
+        runningFixedTotal += mData.amount;
+      });
+
+      sheet3Data.push([]);
+      sheet3Data.push(["סה\"כ מצטבר קבועות והוראות קבע", "", runningFixedTotal, "", ""]);
+
+      const wsFixed = XLSX.utils.aoa_to_sheet(sheet3Data);
+      setupRTLSheet(wsFixed, [32, 20, 18, 16, 20]);
+      XLSX.utils.book_append_sheet(wb, wsFixed, "קבועות והוראות קבע");
+
+      const sheet4Data = [
+        ["פירוט הכנסות בלבד", "", "", monthYearStr],
+        [],
+        ["מקור הכנסה", "סוג", "סכום (ש\"ח)", "בנק / סטטוס קבלה"]
+      ];
+
+      let runningIncomeTotal = 0;
+      appState.incomesList.forEach(inc => {
+        const d = getIncomeMonthlyDetails(inc);
+        sheet4Data.push([inc.source, "הכנסה", d.amount, (inc.bank === 'Pepper' ? 'Pepper' : 'הבינלאומי') + (d.isConfirmed ? ' (✓ נכנס)' : ' (⏳ צפוי)')]);
+        runningIncomeTotal += d.amount;
+      });
+
+      sheet4Data.push([]);
+      sheet4Data.push(["סה\"כ מצטבר הכנסות", "", runningIncomeTotal, ""]);
+
+      const wsInc = XLSX.utils.aoa_to_sheet(sheet4Data);
+      setupRTLSheet(wsInc, [30, 18, 18, 25]);
+      XLSX.utils.book_append_sheet(wb, wsInc, "הכנסות");
+
+      const sheet5Data = [
+        ["פירוט משיכות מזומן", "", "", monthYearStr],
+        [],
+        ["תיאור המשיכה", "סכום (ש\"ח)", "סטטוס משיכה"]
+      ];
+
+      let runningCashTotal = 0;
+      cashList.forEach(c => {
+        sheet5Data.push([c.title, c.amount, c.isWithdrawn ? '✓ נמשך בפועל' : '⏳ ממתין למשיכה']);
+        runningCashTotal += c.amount;
+      });
+
+      sheet5Data.push([]);
+      sheet5Data.push(["סה\"כ מצטבר משיכות מזומן", runningCashTotal, ""]);
+
+      const wsCash = XLSX.utils.aoa_to_sheet(sheet5Data);
+      setupRTLSheet(wsCash, [30, 18, 22]);
+      XLSX.utils.book_append_sheet(wb, wsCash, "משיכות מזומן");
+
+      if (!wb.Workbook) wb.Workbook = {};
+      wb.Workbook.Views = [{ RTL: true }];
+
+      XLSX.writeFile(wb, `דוח_תקציב_מלא_${monthName}_${appState.selectedYear}.xlsx`);
+    }
+
+    function exportPDFReport() {
+      const monthName = MONTH_NAMES[appState.selectedMonth - 1];
+      const monthYearStr = `${monthName} ${appState.selectedYear}`;
+      const currentMonthKey = getCurrentMonthKey();
+
+      const container = document.getElementById('pdfPrintContainer');
+      container.style.display = 'block';
+
+      const incomes = getCalculatedIncomes();
+
+      const currentMonthTxs = appState.transactions.filter(t => isTxInSelectedMonth(t));
+      const totalSpentVar = currentMonthTxs.filter(t => t.envId !== 'var_other' && t.envelopeId !== 'var_other').reduce((sum, t) => sum + t.amount, 0);
+
+      let totalGeneralFixed = 0;
+      appState.generalFixedList.forEach(item => {
+        const d = getGeneralFixedMonthlyDetails(item);
+        if (d.isDue) totalGeneralFixed += d.amount;
+      });
+
+      let totalDirectDebits = 0;
+      appState.directDebits.forEach(dd => {
+        const mData = dd.monthlyData[currentMonthKey] || { amount: dd.defaultAmount };
+        totalDirectDebits += mData.amount;
+      });
+
+      const cashList = appState.cashWithdrawals.filter(w => w.monthKey === currentMonthKey);
+      const totalCash = cashList.reduce((sum, c) => sum + c.amount, 0);
+      const totalExpenses = totalSpentVar + totalGeneralFixed + totalDirectDebits + totalCash;
+      const netResultActual = incomes.confirmedIncome - totalExpenses;
+
+      container.innerHTML = `
+        <div class="pdf-section">
+          <div class="pdf-header">
+            <h1>📊 דוח תקציב ומאזן חודשי - רוני ובתאל</h1>
+            <div style="font-size:14px; font-weight:bold; color:#64748b;">חודש ${monthYearStr}</div>
+          </div>
+          <div class="pdf-section-title">📌 סיכום ומאזן נטו חודשי</div>
+          <table class="pdf-table">
+            <thead>
+              <tr><th>תחום / קטגוריה</th><th>סכום בש"ח</th><th>פירוט / סטטוס</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><b>הכנסות מאושרות (V)</b></td><td style="color:#10b981; font-weight:bold;">₪${incomes.confirmedIncome.toLocaleString()}</td><td>מתוך צפי כולל של ₪${incomes.projectedIncome.toLocaleString()}</td></tr>
+              <tr><td><b>מעטפות משתנות ורכב</b></td><td>₪${totalSpentVar.toLocaleString()}</td><td>משתנות, בלת"מים ודלק (ללא שונות)</td></tr>
+              <tr><td><b>קבועות באשראי</b></td><td>₪${totalGeneralFixed.toLocaleString()}</td><td>תקשורת, ארנונה, חשמל וביטוחים</td></tr>
+              <tr><td><b>הוראות קבע בעו"ש</b></td><td>₪${totalDirectDebits.toLocaleString()}</td><td>משכנתא וגן של בניה</td></tr>
+              <tr><td><b>משיכות מזומן</b></td><td>₪${totalCash.toLocaleString()}</td><td>אירועים, בייביסיטר ועמלות</td></tr>
+              <tr style="background:#f1f5f9; font-weight:bold; border-top:2px solid #cbd5e1;">
+                <td><b>סה"כ מצטבר הוצאות שוטפות</b></td>
+                <td style="color:#ef4444; font-size:14px;"><b>₪${totalExpenses.toLocaleString()}</b></td>
+                <td>סיכום כלל ההוצאות והמשיכות (ללא שונות)</td>
+              </tr>
+              <tr style="background:#e0f2fe; font-weight:bold; border-top:2px solid #0284c7;">
+                <td><b>מאזן נטו בפועל כרגע</b></td>
+                <td style="color:${netResultActual >= 0 ? '#10b981' : '#ef4444'}; font-size:15px;">₪${netResultActual.toLocaleString()}</td>
+                <td>${netResultActual >= 0 ? '✓ עודף חיובי' : '🚨 חריגה / טרם סומנו הכנסות'}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="pdf-section pdf-page-break">
+          <div class="pdf-section-title">📂 פירוט עסקאות - מעטפות משתנות ורכב</div>
+          <table class="pdf-table">
+            <thead>
+              <tr><th>בית עסק</th><th>מעטפה / קטגוריה</th><th>תאריך</th><th>בנק</th><th>סכום</th></tr>
+            </thead>
+            <tbody>
+              ${currentMonthTxs.map(t => {
+                const envId = t.envId || t.envelopeId;
+                const envObj = appState.envelopes.find(e => e.id === envId);
+                const envName = envObj ? envObj.name : (envId === 'var_other' ? 'שונות (חיסכון - מוחרג)' : 'משתנות');
+                return `<tr><td>${t.merchant}</td><td>${envName}</td><td>${t.date || ''}</td><td>${t.isPepper ? 'Pepper' : 'הבינלאומי'}</td><td><b>₪${t.amount.toLocaleString()}</b></td></tr>`;
+              }).join('')}
+              <tr style="background:#eff6ff; font-weight:bold; border-top:2px solid #2563eb;">
+                <td colspan="4"><b>סה"כ מצטבר משתנות ורכב (ללא שונות)</b></td>
+                <td style="color:#1e40af; font-size:14px;"><b>₪${totalSpentVar.toLocaleString()}</b></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="pdf-section pdf-page-break">
+          <div class="pdf-section-title">🏢 פירוט קבועות באשראי והוראות קבע בעו"ש</div>
+          <table class="pdf-table">
+            <thead>
+              <tr><th>שם חיוב / ספק</th><th>סוג חיוב</th><th>בנק</th><th>סכום</th></tr>
+            </thead>
+            <tbody>
+              ${appState.generalFixedList.map(item => {
+                const d = getGeneralFixedMonthlyDetails(item);
+                if (!d.isDue) return '';
+                return `<tr><td>${item.name}</td><td>קבועה באשראי</td><td>${item.bank === 'Pepper' ? 'Pepper' : 'הבינלאומי'}</td><td><b>₪${d.amount.toLocaleString()}</b></td></tr>`;
+              }).join('')}
+              ${appState.directDebits.map(dd => {
+                const mData = dd.monthlyData[currentMonthKey] || { amount: dd.defaultAmount };
+                return `<tr><td>${dd.name}</td><td>הוראת קבע בעו"ש</td><td>הבינלאומי</td><td><b>₪${mData.amount.toLocaleString()}</b></td></tr>`;
+              }).join('')}
+              <tr style="background:#eff6ff; font-weight:bold; border-top:2px solid #2563eb;">
+                <td colspan="3"><b>סה"כ מצטבר קבועות והוראות קבע</b></td>
+                <td style="color:#1e40af; font-size:14px;"><b>₪${(totalGeneralFixed + totalDirectDebits).toLocaleString()}</b></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="pdf-section pdf-page-break">
+          <div class="pdf-section-title">💵 פירוט הכנסות ומשיכות מזומן</div>
+          
+          <h4 style="margin:12px 0 6px; color:#10b981; font-size:15px;">💰 הכנסות בלבד:</h4>
+          <table class="pdf-table" style="margin-bottom:24px;">
+            <thead>
+              <tr><th>מקור הכנסה</th><th>בנק</th><th>סטטוס קבלה</th><th>סכום</th></tr>
+            </thead>
+            <tbody>
+              ${appState.incomesList.map(inc => {
+                const d = getIncomeMonthlyDetails(inc);
+                return `<tr><td>${inc.source}</td><td>${inc.bank === 'Pepper' ? 'Pepper' : 'הבינלאומי'}</td><td>${d.isConfirmed ? '✓ נכנס לבנק' : '⏳ צפוי להיכנס'}</td><td><b>₪${d.amount.toLocaleString()}</b></td></tr>`;
+              }).join('')}
+              <tr style="background:#f0fdf4; font-weight:bold; border-top:2px solid #10b981;">
+                <td colspan="3"><b>סה"כ מצטבר הכנסות</b></td>
+                <td style="color:#166534; font-size:14px;"><b>₪${incomes.projectedIncome.toLocaleString()}</b></td>
+              </tr>
+            </tbody>
+          </table>
+
+          <h4 style="margin:16px 0 6px; color:#047857; font-size:15px;">💵 משיכות מזומן בלבד:</h4>
+          <table class="pdf-table">
+            <thead>
+              <tr><th>תיאור המשיכה</th><th>סטטוס משיכה</th><th>סכום</th></tr>
+            </thead>
+            <tbody>
+              ${cashList.map(c => `<tr><td>${c.title}</td><td>${c.isWithdrawn ? '✓ נמשך בפועל בכספומט' : '⏳ ממתין למשיכה'}</td><td><b>₪${c.amount.toLocaleString()}</b></td></tr>`).join('')}
+              <tr style="background:#ecfdf5; font-weight:bold; border-top:2px solid #059669;">
+                <td colspan="2"><b>סה"כ מצטבר משיכות מזומן</b></td>
+                <td style="color:#065f46; font-size:14px;"><b>₪${totalCash.toLocaleString()}</b></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      `;
+
+      const opt = {
+        margin:       [10, 10, 10, 10],
+        filename:     `דוח_תקציב_מלא_${monthName}_${appState.selectedYear}.pdf`,
+        image:        { type: 'jpeg', quality: 0.98 },
+        html2canvas:  { scale: 2 },
+        jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' },
+        pagebreak:    { mode: ['css', 'legacy'] }
+      };
+
+      html2pdf().set(opt).from(container).save().then(() => {
+        container.style.display = 'none';
+      });
+    }
+
+    function processExcelSmart() {
+      const fileInput = document.getElementById('excelFile');
+      if (!fileInput.files.length) return alert('אנא בחר קובץ אקסל');
+      
+      const file = fileInput.files[0];
+      const reader = new FileReader();
+
+      const foodKeywords = ['יוחננוף', 'רמי לוי', 'שופרסל', 'אושר עד', 'ויקטורי', 'מגה', 'קרפור', 'סופר', 'מינימרקט', 'מכולת', 'ירקות', 'פירות', 'מאפיה', 'מאפה', 'קפה', 'קפיטריה', 'מסעדה', 'פיצה', 'פלאפל', 'שוארמה', 'בורגר', 'מקדונלד', 'גלידה', 'פארם', 'מזון', 'אוכל', 'סופרמרקט'];
+      const carKeywords = ['דלק', 'פז', 'סונול', 'דור אלון', 'טן', 'מיקה', 'סדש', 'חניה', 'פנגו', 'סלו פארק', 'רכבת', 'אגד', 'קווים', 'מטרופולין', 'תחבורה', 'מונית', 'gett', 'yango'];
+      const otherSavedKeywords = ['שאולתיאל', 'שאלתיאל', 'שלתיאל', 'רופא שיניים', 'רפואה פרטית'];
+      
+      reader.onload = function(e) {
+        const buffer = new Uint8Array(e.target.result);
+        const wb = XLSX.read(buffer, { type: 'array' });
+        let foundTxs = [];
+
+        wb.SheetNames.forEach(sheetName => {
+          const sheet = wb.Sheets[sheetName];
+          const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+          let headerIdx = -1;
+          let dateCol = -1, merchantCol = -1, catCol = -1, chargeAmtCol = -1, origAmtCol = -1;
+
+          for (let i = 0; i < rows.length; i++) {
+            const rowStr = (rows[i] || []).join(' ');
+            if (rowStr.includes('תאריך') && (rowStr.includes('עסקה') || rowStr.includes('רכישה') || rowStr.includes('בית עסק'))) {
+              headerIdx = i;
+              rows[i].forEach((cellVal, cIdx) => {
+                const s = String(cellVal || '').trim();
+                if (s.includes('תאריך עסקה') || s.includes('תאריך רכישה')) dateCol = cIdx;
+                else if (s.includes('שם בית') || s.includes('בית עסק')) merchantCol = cIdx;
+                else if (s.includes('קטגוריה')) catCol = cIdx;
+                else if (s.includes('סכום חיוב') || s.includes('סכום בש"ח')) chargeAmtCol = cIdx;
+                else if (s.includes('סכום עסקה מקורי') || s.includes('סכום עסקה')) origAmtCol = cIdx;
+              });
+              break;
+            }
+          }
+
+          if (headerIdx !== -1) {
+            const isMax = wb.SheetNames.includes('עסקאות במועד החיוב') || (rows[3] && String(rows[3]).includes('4 ספרות'));
+            const todayStr = new Date().toLocaleDateString('he-IL');
+
+            if (isMax) appState.lastImportDates.Pepper = todayStr;
+            else appState.lastImportDates.International = todayStr;
+
+            for (let r = headerIdx + 1; r < rows.length; r++) {
+              const row = rows[r];
+              if (!row || row[dateCol] === undefined || row[dateCol] === null) continue;
+              
+              const dateVal = String(row[dateCol]).trim();
+              if (dateVal.includes('סך הכל') || dateVal.includes('כל ') || dateVal.includes('תנאים')) continue;
+
+              const merchantVal = merchantCol !== -1 && row[merchantCol] ? String(row[merchantCol]).trim() : '';
+              let categoryVal = catCol !== -1 && row[catCol] ? String(row[catCol]).trim() : '';
+
+              let chargeAmt = (chargeAmtCol !== -1 && row[chargeAmtCol] !== undefined) ? row[chargeAmtCol] : undefined;
+              let origAmt = (origAmtCol !== -1 && row[origAmtCol] !== undefined) ? row[origAmtCol] : undefined;
+
+              let chargeAmtNum = parseFloat(String(chargeAmt || '').replace(/[^\d.]/g, ''));
+              let origAmtNum = parseFloat(String(origAmt || '').replace(/[^\d.]/g, ''));
+
+              let amtNum = !isNaN(chargeAmtNum) && chargeAmtNum > 0 ? chargeAmtNum : origAmtNum;
+
+              const fullRowStr = row.join(' ');
+              if (fullRowStr.includes('תשלום') || merchantVal.includes('מתוך') || categoryVal.includes('תשלומים')) {
+                const match = fullRowStr.match(/(\d+)\s*(?:מתוך|\/)\s*(\d+)/);
+                if (match && match[2]) {
+                  const totalInstallments = parseInt(match[2]);
+                  if (totalInstallments > 1 && !isNaN(origAmtNum) && origAmtNum > 0) {
+                    if (amtNum === origAmtNum || amtNum > (origAmtNum / totalInstallments + 5)) {
+                      amtNum = Math.round((origAmtNum / totalInstallments) * 100) / 100;
+                    }
+                  }
+                }
+              }
+
+              if (!isNaN(amtNum) && amtNum > 0 && merchantVal && merchantVal !== 'None') {
+                const hoaInfo = calculateHoaDebt();
+                if (merchantVal.toLowerCase().includes('bit') && Math.abs(amtNum - hoaInfo.debtAmount) < 1.0) {
+                  if (confirm(`זוהתה העברה ב-Bit על סכום ₪${amtNum} התואם בדיוק לחוב וועד הבית.\nהאם לעדכן כתשלום וועד בית?`)) {
+                    const monthsPaid = Math.floor(amtNum / 200);
+                    appState.hoaState.lastPaidMonth += monthsPaid;
+                    while (appState.hoaState.lastPaidMonth > 12) {
+                      appState.hoaState.lastPaidMonth -= 12;
+                      appState.hoaState.lastPaidYear++;
+                    }
+                    continue;
+                  }
+                }
+
+                const parsedDate = parseTxDate(row[dateCol]);
+                const txMonthKey = parsedDate ? parsedDate.monthKey : getCurrentMonthKey();
+                const formattedDateStr = parsedDate ? `${String(parsedDate.day).padStart(2, '0')}/${String(parsedDate.month).padStart(2, '0')}/${parsedDate.year}` : dateVal;
+
+                // בדיקת כפילויות עמידה (מול הזיכרון הקיים + מול הקובץ הנוכחי)
+                const isDuplicateInApp = appState.transactions.some(existing => {
+                  const sameMerchant = existing.merchant.trim().toLowerCase() === merchantVal.trim().toLowerCase();
+                  const sameAmount = Math.abs(existing.amount - amtNum) < 0.01;
+                  const sameDateOrMonth = existing.date.trim() === formattedDateStr.trim() || (existing.monthKey && existing.monthKey === txMonthKey);
+                  return sameMerchant && sameAmount && sameDateOrMonth;
+                });
+
+                const isDuplicateInCurrentImport = foundTxs.some(pending => {
+                  const sameMerchant = pending.merchant.trim().toLowerCase() === merchantVal.trim().toLowerCase();
+                  const sameAmount = Math.abs(pending.amount - amtNum) < 0.01;
+                  const sameDateOrMonth = pending.date.trim() === formattedDateStr.trim() || pending.monthKey === txMonthKey;
+                  return sameMerchant && sameAmount && sameDateOrMonth;
+                });
+
+                if (!isDuplicateInApp && !isDuplicateInCurrentImport) {
+                  const lowerM = merchantVal.toLowerCase();
+                  const lowerC = categoryVal.toLowerCase();
+
+                  let matchedFixedItem = appState.generalFixedList.find(fixed => {
+                    if (!fixed.matchKeywords) return false;
+                    return fixed.matchKeywords.some(kw => lowerM.includes(kw.toLowerCase()));
+                  });
+
+                  let envId = 'var_general'; 
+
+                  if (matchedFixedItem) {
+                    envId = 'fixed_matched_' + matchedFixedItem.id;
+                  } else if (otherSavedKeywords.some(kw => lowerM.includes(kw))) {
+                    envId = 'var_other';
+                  } else if (carKeywords.some(kw => lowerM.includes(kw) || lowerC.includes(kw))) {
+                    envId = 'var_car';
+                  } else if (foodKeywords.some(kw => lowerM.includes(kw) || lowerC.includes(kw))) {
+                    envId = 'var_general';
+                  } else {
+                    envId = 'var_unplanned';
+                  }
+
+                  foundTxs.push({
+                    id: Date.now() + Math.random(),
+                    envId: envId,
+                    envelopeId: envId,
+                    merchant: merchantVal,
+                    category: categoryVal || 'כללי',
+                    amount: amtNum,
+                    date: formattedDateStr,
+                    monthKey: txMonthKey,
+                    isPepper: isMax,
+                    source: isMax ? 'Pepper' : 'הבינלאומי',
+                    matchedFixedId: matchedFixedItem ? matchedFixedItem.id : null
+                  });
+                }
+              }
+            }
+          }
+        });
+
+        if (foundTxs.length > 0) {
+          appState.pendingImportTxs = foundTxs;
+          renderPreviewModal();
+        } else {
+          alert('לא זוהו עסקאות חדשות בקובץ עבור חודש זה.');
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    }
+
+    function renderPreviewModal() {
+      document.getElementById('modalTitle').innerText = "תצוגה מקדימה - אישור עסקאות";
+      let html = `<p style="font-size:13px; color:#64748b; margin-bottom:12px;">נמצאו <b>${appState.pendingImportTxs.length}</b> עסקאות. הקוד סיווג אותן אוטומטית, ניתן לשנות מעטפה במידת הצורך:</p>`;
+
+      appState.pendingImportTxs.forEach((t, idx) => {
+        const badgeHtml = t.isPepper ? `<span class="badge-pepper">Pepper</span>` : `<span class="badge-isra">הבינלאומי</span>`;
+        const matchedName = t.matchedFixedId ? (appState.generalFixedList.find(f => f.id === t.matchedFixedId)?.name || '') : '';
+        const envId = t.envId || t.envelopeId;
+
+        let envOptionsHtml = appState.envelopes.map(e => `
+          <option value="${e.id}" ${envId === e.id ? 'selected' : ''}>${e.name}</option>
+        `).join('');
+
+        html += `
+          <div class="tx-item">
+            <div style="flex:1;">
+              <div style="font-weight:bold;">${t.merchant}</div>
+              <div style="font-size:11px; color:#64748b; display:flex; align-items:center; gap:6px; margin-top:2px;">
+                ${badgeHtml} <span>${t.date}</span>
+              </div>
+            </div>
+            <div style="display:flex; align-items:center; gap:6px;">
+              <span style="font-weight:bold;">₪${t.amount.toLocaleString()}</span>
+              <select class="select-env-preview" onchange="changePendingTxEnv(${idx}, this.value)">
+                ${envOptionsHtml}
+                <option value="var_other" ${envId === 'var_other' ? 'selected' : ''}>שונות (חיסכון)</option>
+                <option value="fixed" ${envId.startsWith('fixed_matched_') || envId === 'fixed' ? 'selected' : ''}>📌 קבועות ${matchedName ? '(' + matchedName + ')' : ''}</option>
+              </select>
+              <button class="btn-delete-item" onclick="removePendingTx(${idx})">🗑️</button>
+            </div>
+          </div>
+        `;
+      });
+
+      html += `<button class="btn-confirm-import" onclick="confirmImport()">✅ אישור והוספת עסקאות</button>`;
+      document.getElementById('modalBody').innerHTML = html;
+      document.getElementById('modal').style.display = 'flex';
+    }
+
+    function changePendingTxEnv(idx, newEnvId) {
+      if (!appState.pendingImportTxs[idx]) return;
+
+      if (newEnvId === 'fixed') {
+        openPendingTxFixedSelectionModal(idx);
+      } else {
+        appState.pendingImportTxs[idx].envId = newEnvId;
+        appState.pendingImportTxs[idx].envelopeId = newEnvId;
+        appState.pendingImportTxs[idx].matchedFixedId = null;
+      }
+    }
+
+    function openPendingTxFixedSelectionModal(idx) {
+      const t = appState.pendingImportTxs[idx];
+      if (!t) return;
+
+      document.getElementById('modalTitle').innerText = "שיוך קבועה - תצוגה מקדימה";
+
+      let optionsHtml = appState.generalFixedList.map(item => `
+        <button onclick="confirmPendingTxFixedSelection(${idx}, '${item.id}')" style="width:100%; text-align:right; padding:10px; margin-bottom:6px; border-radius:8px; border:1px solid var(--border); background:#f8fafc; font-weight:bold; cursor:pointer; display:flex; justify-content:space-between; align-items:center;">
+          <span>📌 ${item.name}</span>
+          <span style="color:var(--text-muted); font-size:11px;">₪${item.defaultAmount}</span>
+        </button>
+      `).join('');
+
+      let html = `
+        <p style="font-size:13px; color:#64748b; margin-bottom:10px;">בחר לאיזו קבועה לשייך את העסקה <b>"${t.merchant}"</b> (₪${t.amount}):</p>
+        <div style="max-height:240px; overflow-y:auto; margin-bottom:10px;">
+          ${optionsHtml}
+        </div>
+        <button onclick="createAndSelectNewFixedPending(${idx})" style="width:100%; padding:10px; background:#e0f2fe; color:#0369a1; border:1px solid #7dd3fc; border-radius:8px; font-weight:bold; cursor:pointer;">
+          ➕ הוסף קבועה חדשה לרשימה ושייך אליה
+        </button>
+      `;
+
+      document.getElementById('modalBody').innerHTML = html;
+      document.getElementById('modal').style.display = 'flex';
+    }
+
+    function confirmPendingTxFixedSelection(idx, fixedId) {
+      if (appState.pendingImportTxs[idx]) {
+        appState.pendingImportTxs[idx].envId = 'fixed_matched_' + fixedId;
+        appState.pendingImportTxs[idx].envelopeId = 'fixed_matched_' + fixedId;
+        appState.pendingImportTxs[idx].matchedFixedId = fixedId;
+      }
+      renderPreviewModal();
+    }
+
+    function createAndSelectNewFixedPending(idx) {
+      const newItem = addNewGeneralFixedPrompt();
+      if (newItem) {
+        confirmPendingTxFixedSelection(idx, newItem.id);
+      }
+    }
+
+    function removePendingTx(idx) {
+      appState.pendingImportTxs.splice(idx, 1);
+      renderPreviewModal();
+    }
+
+    function confirmImport() {
+      appState.pendingImportTxs.forEach(t => {
+        const envId = t.envId || t.envelopeId;
+        if (envId.startsWith('fixed_matched_') || envId === 'fixed') {
+          if (t.matchedFixedId) {
+            const currentMonthKey = getCurrentMonthKey();
+            const fixedItem = appState.generalFixedList.find(f => f.id === t.matchedFixedId);
+            if (fixedItem) {
+              if (!fixedItem.monthlyData) fixedItem.monthlyData = {};
+              fixedItem.monthlyData[currentMonthKey] = { isConfirmed: true, amount: t.amount };
+            }
+          }
+        } else {
+          appState.transactions.push(t);
+        }
+      });
+
+      appState.pendingImportTxs = [];
+      closeModal();
+      render();
+    }
+
+    function openEnvModal(envId) {
+      appState.activeModalEnvId = envId;
+      const envName = (appState.envelopes.find(e => e.id === envId)?.name || (envId === 'var_other' ? 'שונות' : 'מעטפה'));
+      const allEnvTxs = appState.transactions.filter(t => (t.envId === envId || t.envelopeId === envId) && isTxInSelectedMonth(t));
+
+      document.getElementById('modalTitle').innerText = `פירוט מעטפת ${envName}`;
+      let html = `<div id="modalTxList"></div>`;
+
+      document.getElementById('modalBody').innerHTML = html;
+      renderModalTxsList(allEnvTxs);
+      document.getElementById('modal').style.display = 'flex';
+    }
+
+    function renderModalTxsList(txs) {
+      const container = document.getElementById('modalTxList');
+      if (!container) return;
+
+      if (txs.length === 0) {
+        container.innerHTML = `<div style="text-align:center; color:#94a3b8; padding:20px;">אין עסקאות במעטפת זו בחודש זה</div>`;
+        return;
+      }
+
+      let html = '';
+      txs.forEach(t => {
+        const badgeHtml = t.isPepper ? `<span class="badge-pepper">Pepper</span>` : `<span class="badge-isra">הבינלאומי</span>`;
+
+        html += `
+          <div class="tx-item">
+            <div style="flex:1;">
+              <div style="font-weight:bold;">${t.merchant}</div>
+              <div style="font-size:11px; color:#64748b; display:flex; align-items:center; gap:6px; margin-top:2px;">
+                ${badgeHtml} <span>${t.date}</span>
+              </div>
+            </div>
+            <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+              <span style="font-weight:bold;">₪${t.amount.toLocaleString()}</span>
+              <button class="btn-action" onclick="editTxAmount('${t.id}')">✏️ סכום</button>
+              <button class="btn-action" onclick="editTxCategory('${t.id}')">🏷️ ${t.category || 'כללי'}</button>
+              <button class="btn-action" onclick="moveTxEnvelopePrompt('${t.id}')">⇄ מעטפה</button>
+              <button class="btn-delete-item" onclick="deleteTx('${t.id}')">🗑️</button>
+            </div>
+          </div>
+        `;
+      });
+      container.innerHTML = html;
+    }
+
+    function editTxAmount(txId) {
+      const t = appState.transactions.find(x => x.id == txId);
+      if (!t) return;
+      const newAmtStr = prompt(`עדכן סכום עבור העסקה "${t.merchant}":`, t.amount);
+      if (newAmtStr !== null) {
+        const newAmt = parseFloat(newAmtStr);
+        if (!isNaN(newAmt) && newAmt >= 0) {
+          t.amount = newAmt;
+          render();
+          openEnvModal(appState.activeModalEnvId);
+        } else {
+          alert('אנא הזן סכום תקין.');
+        }
+      }
+    }
+
+    function editTxCategory(txId) {
+      const t = appState.transactions.find(x => x.id == txId);
+      if (!t) return;
+      const newCat = prompt('ערוך שם קטגוריה:', t.category || 'כללי');
+      if (newCat !== null) {
+        t.category = newCat.trim();
+        render();
+        openEnvModal(appState.activeModalEnvId);
+      }
+    }
+
+    function moveTxEnvelopePrompt(txId) {
+      const t = appState.transactions.find(x => x.id == txId);
+      if (!t) return;
+
+      document.getElementById('modalTitle').innerText = `⇄ העברת עסקה - ${t.merchant}`;
+
+      let envOptionsHtml = appState.envelopes.map(env => `
+        <button onclick="executeMoveTxToEnv('${txId}', '${env.id}')" style="width:100%; text-align:right; padding:12px; margin-bottom:8px; border-radius:10px; border:1px solid var(--border); background:#f8fafc; font-weight:bold; cursor:pointer; display:flex; justify-content:space-between; align-items:center;">
+          <span>📁 מעטפת ${env.name}</span>
+          <span style="color:var(--text-muted); font-size:12px;">תקציב: ₪${env.budget.toLocaleString()}</span>
+        </button>
+      `).join('');
+
+      let html = `
+        <p style="font-size:13px; color:#64748b; margin-bottom:12px;">בחר מעטפה יעד עבור העסקה <b>"${t.merchant}"</b> (₪${t.amount.toLocaleString()}):</p>
+        <div style="max-height:280px; overflow-y:auto; margin-bottom:12px;">
+          ${envOptionsHtml}
+          <button onclick="executeMoveTxToEnv('${txId}', 'var_other')" style="width:100%; text-align:right; padding:12px; margin-bottom:8px; border-radius:10px; border:1px solid var(--purple-border); background:var(--purple-soft); color:#6b21a8; font-weight:bold; cursor:pointer;">
+            📁 שונות (חיובים מחיסכון)
+          </button>
+          <button onclick="assignTxToFixedModal('${txId}')" style="width:100%; text-align:right; padding:12px; margin-bottom:8px; border-radius:10px; border:1px solid var(--cyan-border); background:var(--cyan-light); color:#0284c7; font-weight:bold; cursor:pointer;">
+            📌 מעטפת קבועות (שיוך לקבועה באשראי)
+          </button>
+        </div>
+      `;
+
+      document.getElementById('modalBody').innerHTML = html;
+      document.getElementById('modal').style.display = 'flex';
+    }
+
+    function executeMoveTxToEnv(txId, envId) {
+      const t = appState.transactions.find(x => x.id == txId);
+      if (t) {
+        t.envId = envId;
+        t.envelopeId = envId;
+        render();
+        if (appState.activeModalEnvId) openEnvModal(appState.activeModalEnvId);
+        else closeModal();
+      }
+    }
+
+    function assignTxToFixedModal(txId) {
+      const t = appState.transactions.find(x => x.id == txId);
+      if (!t) return;
+
+      document.getElementById('modalTitle').innerText = "משויך לקבועות - בחירת ספק";
+
+      let optionsHtml = appState.generalFixedList.map(item => `
+        <button onclick="confirmMoveTxToFixed('${txId}', '${item.id}')" style="width:100%; text-align:right; padding:12px; margin-bottom:8px; border-radius:10px; border:1px solid var(--border); background:#f8fafc; font-weight:bold; cursor:pointer; display:flex; justify-content:space-between; align-items:center;">
+          <span>📌 ${item.name}</span>
+          <span style="color:var(--text-muted); font-size:12px;">₪${item.defaultAmount}</span>
+        </button>
+      `).join('');
+
+      let html = `
+        <p style="font-size:13px; color:#64748b; margin-bottom:12px;">בחר לאיזו קבועה לשייך את העסקה <b>"${t.merchant}"</b> על סך <b>₪${t.amount.toLocaleString()}</b>:</p>
+        <div style="max-height:280px; overflow-y:auto; margin-bottom:12px;">
+          ${optionsHtml}
+        </div>
+        <button onclick="createNewFixedFromTx('${txId}')" style="width:100%; padding:12px; background:#e0f2fe; color:#0369a1; border:1px solid #7dd3fc; border-radius:10px; font-weight:bold; cursor:pointer;">
+          ➕ הוסף קבועה חדשה לרשימה ושייך אליה
+        </button>
+      `;
+
+      document.getElementById('modalBody').innerHTML = html;
+      document.getElementById('modal').style.display = 'flex';
+    }
+
+    function confirmMoveTxToFixed(txId, fixedId) {
+      const t = appState.transactions.find(x => x.id == txId);
+      const fixedItem = appState.generalFixedList.find(f => f.id === fixedId);
+      
+      if (t && fixedItem) {
+        const currentMonthKey = getCurrentMonthKey();
+        if (!fixedItem.monthlyData) fixedItem.monthlyData = {};
+        fixedItem.monthlyData[currentMonthKey] = { isConfirmed: true, amount: t.amount };
+
+        appState.transactions = appState.transactions.filter(x => x.id != txId);
+        
+        alert(`העסקה "${t.merchant}" (₪${t.amount}) שוייכה בהצלחה לקבועה "${fixedItem.name}" והועברה למעטפת הקבועות!`);
+        closeModal();
+        render();
+      }
+    }
+
+    function createNewFixedFromTx(txId) {
+      const newItem = addNewGeneralFixedPrompt();
+      if (newItem) {
+        confirmMoveTxToFixed(txId, newItem.id);
+      }
+    }
+
+    function deleteTx(txId) {
+      if (confirm('האם למחוק עסקה זו?')) {
+        appState.transactions = appState.transactions.filter(x => x.id != txId);
+        render();
+        openEnvModal(appState.activeModalEnvId);
+      }
+    }
+
+    function openGeneralFixedModal() {
+      document.getElementById('modalTitle').innerText = "מעקב קבועות מאשראי";
+      
+      let html = `
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+          <span style="font-size:13px; font-weight:bold; color:#0369a1;">רשימת הקבועות באשראי:</span>
+          <button onclick="addNewGeneralFixedFromModal()" style="font-size:12px; background:#e0f2fe; color:#0369a1; border:none; padding:6px 12px; border-radius:8px; font-weight:bold; cursor:pointer;">+ הוסף קבועה חדשה</button>
+        </div>
+      `;
+
+      appState.generalFixedList.forEach((item, idx) => {
+        const details = getGeneralFixedMonthlyDetails(item);
+        if (details.isDue) {
+          html += `
+            <div class="fixed-item-box ${details.isConfirmed ? 'confirmed' : ''}">
+              <div>
+                <div style="font-weight:bold;">${item.name}</div>
+                <div style="font-size:11px; color:#64748b;">בנק: ${item.bank === 'Pepper' ? 'Pepper' : 'הבינלאומי'}</div>
+              </div>
+              <div style="display:flex; align-items:center; gap:8px;">
+                <span style="font-weight:bold;">₪${details.amount.toLocaleString()}</span>
+                <button class="btn-action" onclick="toggleFixedConfirmState(${idx})" title="שנה סטטוס">⇄</button>
+                <button class="btn-action" onclick="editGeneralFixedAmount(${idx})" title="ערוך סכום">✏️</button>
+              </div>
+            </div>
+          `;
+        }
+      });
+
+      document.getElementById('modalBody').innerHTML = html;
+      document.getElementById('modal').style.display = 'flex';
+    }
+
+    function addNewGeneralFixedPrompt() {
+      const name = prompt('הכנס שם לקבועה החדשה (למשל: ספורט, מנוי עיתון):');
+      if (!name) return null;
+      
+      const amountStr = prompt(`הכנס סכום מחדל עבור ${name}:`, '100');
+      const amount = parseFloat(amountStr) || 0;
+      
+      const bankChoice = prompt('לאיזה בנק משויכת הקבועה?\n1: הבינלאומי\n2: Pepper', '1');
+      const bank = bankChoice === '2' ? 'Pepper' : 'International';
+
+      const newItem = {
+        id: 'gf_custom_' + Date.now(),
+        matchKeywords: [name],
+        matchAmount: amount,
+        name: name,
+        defaultAmount: amount,
+        isBimonthly: false,
+        bank: bank,
+        monthlyData: {}
+      };
+
+      appState.generalFixedList.push(newItem);
+      return newItem;
+    }
+
+    function addNewGeneralFixedFromModal() {
+      const newItem = addNewGeneralFixedPrompt();
+      if (newItem) {
+        render();
+        openGeneralFixedModal();
+      }
+    }
+
+    function toggleFixedConfirmState(idx) {
+      const item = appState.generalFixedList[idx];
+      if (!item) return;
+
+      const currentMonthKey = getCurrentMonthKey();
+      if (!item.monthlyData) item.monthlyData = {};
+
+      const currentM = item.monthlyData[currentMonthKey] || { amount: item.defaultAmount, isConfirmed: false };
+      currentM.isConfirmed = !currentM.isConfirmed;
+      item.monthlyData[currentMonthKey] = currentM;
+
+      render();
+      openGeneralFixedModal();
+    }
+
+    function editGeneralFixedAmount(idx) {
+      const item = appState.generalFixedList[idx];
+      if (!item) return;
+
+      const currentMonthKey = getCurrentMonthKey();
+      if (!item.monthlyData) item.monthlyData = {};
+      const currentM = item.monthlyData[currentMonthKey] || { amount: item.defaultAmount, isConfirmed: false };
+
+      const val = prompt(`עדכן סכום עבור ${item.name}:`, currentM.amount);
+      if (val !== null) {
+        currentM.amount = parseFloat(val) || 0;
+        item.monthlyData[currentMonthKey] = currentM;
+        render();
+        openGeneralFixedModal();
+      }
+    }
+
+    function openIncomeModal() {
+      document.getElementById('modalTitle').innerText = "פירוט הכנסות קבועות לפי בנק";
+
+      let html = `
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+          <span style="font-size:13px; font-weight:bold; color:var(--success);">סמן V ליד הכנסה שנכנסה כבר לבנק:</span>
+          <button onclick="addIncomePrompt()" style="font-size:12px; background:#dcfce7; color:#15803d; border:none; padding:6px 12px; border-radius:8px; font-weight:bold; cursor:pointer;">+ הוסף הכנסה</button>
+        </div>
+      `;
+
+      appState.incomesList.forEach((inc) => {
+        const details = getIncomeMonthlyDetails(inc);
+        const bankBadge = inc.bank === 'Pepper' ? `<span class="badge-pepper">Pepper</span>` : `<span class="badge-isra">הבינלאומי</span>`;
+        const statusLabel = details.isConfirmed 
+          ? `<span style="font-size:11px; color:#166534; font-weight:bold;">✓ אושר ונכנס לבנק</span>`
+          : `<span style="font-size:11px; color:#64748b;">⏳ צפוי להיכנס</span>`;
+
+        html += `
+          <div class="income-item-box ${details.isConfirmed ? 'received' : ''}">
+            <div style="display:flex; align-items:center; gap:12px;">
+              <input type="checkbox" class="savings-checkbox" ${details.isConfirmed ? 'checked' : ''} onchange="toggleIncomeStatus('${inc.id}')">
+              <div>
+                <div style="font-weight:bold; font-size:15px; color:#0f172a;">${inc.source} ${bankBadge}</div>
+                <div style="margin-top:2px;">${statusLabel}</div>
+              </div>
+            </div>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span style="font-weight:bold; font-size:16px; color:var(--success);">₪${details.amount.toLocaleString()}</span>
+              <button class="btn-action" onclick="editIncomeAmount('${inc.id}')" title="ערוך סכום">✏️</button>
+            </div>
+          </div>
+        `;
+      });
+
+      document.getElementById('modalBody').innerHTML = html;
+      document.getElementById('modal').style.display = 'flex';
+    }
+
+    function toggleIncomeStatus(incId) {
+      const inc = appState.incomesList.find(i => i.id === incId);
+      if (!inc) return;
+
+      const currentMonthKey = getCurrentMonthKey();
+      if (!inc.monthlyData) inc.monthlyData = {};
+
+      const currentM = inc.monthlyData[currentMonthKey] || { amount: inc.defaultAmount, isConfirmed: false };
+      currentM.isConfirmed = !currentM.isConfirmed;
+      inc.monthlyData[currentMonthKey] = currentM;
+
+      render();
+      openIncomeModal();
+    }
+
+    function editIncomeAmount(incId) {
+      const inc = appState.incomesList.find(i => i.id === incId);
+      if (!inc) return;
+
+      const currentMonthKey = getCurrentMonthKey();
+      if (!inc.monthlyData) inc.monthlyData = {};
+      const currentM = inc.monthlyData[currentMonthKey] || { amount: inc.defaultAmount, isConfirmed: false };
+
+      const val = prompt(`עדכן סכום הכנסה עבור ${inc.source}:`, currentM.amount);
+      if (val !== null) {
+        currentM.amount = parseFloat(val) || 0;
+        inc.monthlyData[currentMonthKey] = currentM;
+        render();
+        openIncomeModal();
+      }
+    }
+
+    function addIncomePrompt() {
+      const source = prompt('הכנס את מקור ההכנסה:');
+      if (!source) return;
+      const amount = parseFloat(prompt(`הכנס סכום עבור ${source}:`));
+      if (!amount || isNaN(amount)) return;
+
+      const bankChoice = prompt('לאיזה בנק שייכת ההכנסה?\n1: Pepper\n2: הבינלאומי', '2');
+      appState.incomesList.push({
+        id: 'inc_' + Date.now(),
+        source: source,
+        defaultAmount: amount,
+        bank: bankChoice === '1' ? 'Pepper' : 'International',
+        monthlyData: {}
+      });
+
+      render();
+      openIncomeModal();
+    }
+
+    function openSavingsModal() {
+      document.getElementById('modalTitle').innerText = "מעקב חסכונות קבועים";
+      let html = '';
+      appState.savingsList.forEach((s, idx) => {
+        html += `
+          <div class="savings-item ${s.isDone ? 'completed' : ''}">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <input type="checkbox" class="savings-checkbox" ${s.isDone ? 'checked' : ''} onchange="toggleSavingsStatus(${idx})">
+              <span>${s.name} (Pepper)</span>
+            </div>
+            <span style="font-weight:bold;">₪${s.target.toLocaleString()}</span>
+          </div>
+        `;
+      });
+      document.getElementById('modalBody').innerHTML = html;
+      document.getElementById('modal').style.display = 'flex';
+    }
+
+    function toggleSavingsStatus(index) {
+      appState.savingsList[index].isDone = !appState.savingsList[index].isDone;
+      render();
+      openSavingsModal();
+    }
+
+    function addSavingsPrompt() {
+      const name = prompt('שם החיסכון החדש:');
+      if (!name) return;
+      const target = parseFloat(prompt(`הכנס סכום יעד עבור ${name}:`));
+      if (!target || isNaN(target)) return;
+
+      appState.savingsList.push({ id: Date.now(), name: name, target: target, bank: 'Pepper', isDone: false });
+      render();
+      openSavingsModal();
+    }
+
+    function addForecastTxGlobal() {
+      const merchant = prompt('שם ההוצאה הצפויה / בדיקה:');
+      if (!merchant) return;
+      const amount = parseFloat(prompt('סכום צפוי בש"ח:'));
+      if (!amount) return;
+
+      const envId = appState.envelopes[0] ? appState.envelopes[0].id : 'var_general';
+
+      appState.transactions.push({
+        id: Date.now(),
+        envId: envId,
+        envelopeId: envId,
+        merchant: merchant,
+        amount: amount,
+        date: 'צפי חודשי',
+        monthKey: getCurrentMonthKey(),
+        category: 'בדיקה/צפי'
+      });
+
+      render();
+      alert('ההוצאה הצפויה הוספה בהצלחה למשתנות!');
+    }
+
+    function openOverallPieModal() {
+      document.getElementById('modalTitle').innerText = "פילוג הוצאות כללי";
+      document.getElementById('modalBody').innerHTML = `
+        <div style="height:260px; margin-bottom:12px;">
+          <canvas id="overallPieCanvas"></canvas>
+        </div>
+      `;
+      document.getElementById('modal').style.display = 'flex';
+
+      setTimeout(() => {
+        const catTotals = {};
+        appState.transactions.filter(t => isTxInSelectedMonth(t)).forEach(t => {
+          const cat = t.category || 'כללי';
+          catTotals[cat] = (catTotals[cat] || 0) + t.amount;
+        });
+
+        const ctx = document.getElementById('overallPieCanvas').getContext('2d');
+        if (appState.chartInstance) appState.chartInstance.destroy();
+
+        appState.chartInstance = new Chart(ctx, {
+          type: 'pie',
+          data: {
+            labels: Object.keys(catTotals),
+            datasets: [{
+              data: Object.values(catTotals),
+              backgroundColor: ['#2563eb', '#ff007f', '#10b981', '#f59e0b', '#8b5cf6', '#06b6d4', '#ec4899']
+            }]
+          },
+          options: { responsive: true, maintainAspectRatio: false }
+        });
+      }, 100);
+    }
+
+    function openImportModal() {
+      document.getElementById('modalTitle').innerText = "הורדת / טעינת דף מידע";
+
+      const pepperDateText = appState.lastImportDates.Pepper 
+        ? `תאריך קליטה אחרון: ${appState.lastImportDates.Pepper}` 
+        : `טרם נקלט קובץ`;
+
+      const israDateText = appState.lastImportDates.International 
+        ? `תאריך קליטה אחרון: ${appState.lastImportDates.International}` 
+        : `טרם נקלט קובץ`;
+
+      document.getElementById('modalBody').innerHTML = `
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:16px;">
+          <div>
+            <a href="https://www.max.co.il/transaction-details/personal" target="_blank" style="padding:10px; text-align:center; background:#f1f5f9; border-radius:8px; text-decoration:none; font-weight:bold; color:#0f172a; display:block;">אתר Pepper ↗</a>
+            <div style="font-size:10px; color:#64748b; text-align:center; margin-top:4px;">${pepperDateText}</div>
+          </div>
+          <div>
+            <a href="https://web.isracard.co.il/transactions" target="_blank" style="padding:10px; text-align:center; background:#f1f5f9; border-radius:8px; text-decoration:none; font-weight:bold; color:#0f172a; display:block;">אתר הבינלאומי ↗</a>
+            <div style="font-size:10px; color:#64748b; text-align:center; margin-top:4px;">${israDateText}</div>
+          </div>
+        </div>
+        <p style="font-size:13px; color:#64748b; margin-bottom:8px;">בחר קובץ אקסל שירד מהאתר:</p>
+        <input type="file" id="excelFile" accept=".xlsx, .xls" style="width:100%; margin-bottom:12px;">
+        <button onclick="processExcelSmart()" style="width:100%; padding:12px; background:#2563eb; color:#fff; border:none; border-radius:8px; font-weight:bold; cursor:pointer;">סרוק עסקאות בקובץ</button>
+      `;
+      document.getElementById('modal').style.display = 'flex';
+    }
+
+    function closeModal() { 
+      document.getElementById('modal').style.display = 'none'; 
+      if (appState.chartInstance) { appState.chartInstance.destroy(); appState.chartInstance = null; }
+    }
+
+    // Attach to Window Scope
+    window.render = render;
+    window.navigateMonth = navigateMonth;
+    window.openMonthPickerModal = openMonthPickerModal;
+    window.selectMonthFromModal = selectMonthFromModal;
+    window.jumpToCurrentMonth = jumpToCurrentMonth;
+    window.openAddEnvelopeModal = openAddEnvelopeModal;
+    window.submitNewEnvelope = submitNewEnvelope;
+    window.openEditEnvelopeModal = openEditEnvelopeModal;
+    window.saveEnvelopeEdit = saveEnvelopeEdit;
+    window.deleteEnvelope = deleteEnvelope;
+    window.openBudgetTransferModal = openBudgetTransferModal;
+    window.executeBudgetTransfer = executeBudgetTransfer;
+    window.openNetBalanceModal = openNetBalanceModal;
+    window.openTransferForecastModal = openTransferForecastModal;
+    window.openConfirmDirectDebitModal = openConfirmDirectDebitModal;
+    window.saveDirectDebitConfirmation = saveDirectDebitConfirmation;
+    window.addDirectDebitPrompt = addDirectDebitPrompt;
+    window.openHoaModal = openHoaModal;
+    window.submitHoaPayment = submitHoaPayment;
+    window.openCashModal = openCashModal;
+    window.openAddCashModal = openAddCashModal;
+    window.toggleCashFeeVisibility = toggleCashFeeVisibility;
+    window.submitNewCashWithdrawal = submitNewCashWithdrawal;
+    window.toggleCashWithdrawalStatus = toggleCashWithdrawalStatus;
+    window.removeCashWithdrawal = removeCashWithdrawal;
+    window.exportCustomExcelWorkbook = exportCustomExcelWorkbook;
+    window.exportPDFReport = exportPDFReport;
+    window.processExcelSmart = processExcelSmart;
+    window.renderPreviewModal = renderPreviewModal;
+    window.changePendingTxEnv = changePendingTxEnv;
+    window.confirmPendingTxFixedSelection = confirmPendingTxFixedSelection;
+    window.createAndSelectNewFixedPending = createAndSelectNewFixedPending;
+    window.removePendingTx = removePendingTx;
+    window.confirmImport = confirmImport;
+    window.openEnvModal = openEnvModal;
+    window.editTxAmount = editTxAmount;
+    window.editTxCategory = editTxCategory;
+    window.moveTxEnvelopePrompt = moveTxEnvelopePrompt;
+    window.executeMoveTxToEnv = executeMoveTxToEnv;
+    window.assignTxToFixedModal = assignTxToFixedModal;
+    window.confirmMoveTxToFixed = confirmMoveTxToFixed;
+    window.createNewFixedFromTx = createNewFixedFromTx;
+    window.deleteTx = deleteTx;
+    window.openGeneralFixedModal = openGeneralFixedModal;
+    window.addNewGeneralFixedFromModal = addNewGeneralFixedFromModal;
+    window.toggleFixedConfirmState = toggleFixedConfirmState;
+    window.editGeneralFixedAmount = editGeneralFixedAmount;
+    window.openIncomeModal = openIncomeModal;
+    window.toggleIncomeStatus = toggleIncomeStatus;
+    window.editIncomeAmount = editIncomeAmount;
+    window.addIncomePrompt = addIncomePrompt;
+    window.openSavingsModal = openSavingsModal;
+    window.toggleSavingsStatus = toggleSavingsStatus;
+    window.addSavingsPrompt = addSavingsPrompt;
+    window.addForecastTxGlobal = addForecastTxGlobal;
+    window.openOverallPieModal = openOverallPieModal;
+    window.openImportModal = openImportModal;
+    window.closeModal = closeModal;
+
+    render();
+  </script>
+</body>
+</html>

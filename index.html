@@ -209,7 +209,7 @@
     
     .badge-pepper { font-size: 10px; background: var(--pepper-pink); color: #ffffff; padding: 2px 8px; border-radius: 6px; font-weight: bold; display: inline-block; box-shadow: 0 0 8px rgba(255, 0, 127, 0.3); }
     .badge-isra { font-size: 10px; background: #3b82f6; color: #ffffff; padding: 2px 8px; border-radius: 6px; font-weight: bold; display: inline-block; }
-    .badge-inst { font-size: 10px; background: #f59e0b; color: #ffffff; padding: 2px 8px; border-radius: 6px; font-weight: bold; display: inline-block; }
+    .badge-inst { font-size: 10px; background: #8b5cf6; color: #ffffff; padding: 2px 8px; border-radius: 6px; font-weight: bold; display: inline-block; }
     
     .select-env-preview { font-size: 11px; font-weight: bold; padding: 4px 6px; border-radius: 6px; border: 1px solid #cbd5e1; background: #fff; cursor: pointer; outline: none; }
 
@@ -607,11 +607,9 @@
       return `${appState.selectedYear}-${String(appState.selectedMonth).padStart(2, '0')}`;
     }
 
-    // מפענח תאריכים מורחב התומך במספרי אקסל נומריים וכל סוגי המחרוזות
     function parseTxDate(dateVal) {
       if (!dateVal || dateVal === 'צפי חודשי') return null;
 
-      // טיפול בתאריך נומרי של אקסל (Serial Date Number)
       if (typeof dateVal === 'number' || (!isNaN(Number(dateVal)) && Number(dateVal) > 30000 && Number(dateVal) < 60000)) {
         const serial = Number(dateVal);
         const dt = new Date(Math.round((serial - 25569) * 86400 * 1000));
@@ -657,18 +655,15 @@
       return { day, month, year, monthKey: `${year}-${String(month).padStart(2, '0')}` };
     }
 
-    // בדיקת שיוך חודש מדויקת וחד-משמעית המתעדפת תמיד את התאריך הממשי של העסקה
     function isTxInSelectedMonth(t) {
       if (!t) return false;
       if (t.date === 'צפי חודשי') return true;
 
-      // 1. קודם כל מפענחים ישירות מתוך התאריך הממשי של העסקה (הגנה מוחלטת מזליגת חודשים)
       const parsed = parseTxDate(t.date);
       if (parsed) {
         return parsed.month === appState.selectedMonth && parsed.year === appState.selectedYear;
       }
 
-      // 2. רק במידה והתאריך אינו ניתן לפענוח (למשל טקסט חופשי), מסתמכים על monthKey
       if (t.monthKey) {
         return t.monthKey === getCurrentMonthKey();
       }
@@ -1091,7 +1086,6 @@
 
       updateBankTransferForecast();
 
-      // החרגת מעטפת שונות (חיובים מחיסכון) מחישוב הנטו השוטף
       const totalOverallExpensesActual = totalSpentVar + totalGeneralFixed + totalDirectDebitsSpent + totalCashAmount;
       const totalOverallExpensesProjected = totalBudgetVar + totalGeneralFixed + totalDirectDebitsSpent + totalCashAmount;
 
@@ -1240,7 +1234,6 @@
         `;
       });
 
-      // החרגת "שונות" מחישוב סך הכל הוצאות ומאזן נטו בפועל
       const totalOverallExpensesActual = totalSpentVar + totalGeneralFixed + totalDirectDebits + totalCash;
       const totalBudgetVar = appState.envelopes.reduce((s, e) => s + e.budget, 0);
       const totalOverallExpensesProjected = totalBudgetVar + totalGeneralFixed + totalDirectDebits + totalCash;
@@ -1930,7 +1923,7 @@
       });
     }
 
-    // תכונה 1: מייצר אוטומטית עסקאות המשך לחודשים הבאים במידה ומדובר בעסקת תשלומים
+    // תכונה 1: מייצר אוטומטית עסקאות המשך לחודשים הבאים ולחודשים קודמים במידה ומדובר בעסקת תשלומים
     function generateInstallmentSeries(baseTx) {
       if (!baseTx.installmentTotal || baseTx.installmentTotal <= 1) return;
 
@@ -1940,12 +1933,18 @@
       let startYear = parsed ? parsed.year : appState.selectedYear;
       let currentInstNum = baseTx.installmentCurrent || 1;
 
-      for (let i = currentInstNum + 1; i <= baseTx.installmentTotal; i++) {
+      for (let i = 1; i <= baseTx.installmentTotal; i++) {
+        if (i === currentInstNum) continue;
+
         let futMonth = startMonth + (i - currentInstNum);
         let futYear = startYear;
         while (futMonth > 12) {
           futMonth -= 12;
           futYear += 1;
+        }
+        while (futMonth < 1) {
+          futMonth += 12;
+          futYear -= 1;
         }
 
         const futMonthKey = `${futYear}-${String(futMonth).padStart(2, '0')}`;
@@ -1953,7 +1952,7 @@
 
         const exists = appState.transactions.some(t => 
           t.merchant === baseTx.merchant && 
-          t.amount === baseTx.amount && 
+          Math.abs(t.amount - baseTx.amount) < 0.01 && 
           t.installmentCurrent === i && 
           t.installmentTotal === baseTx.installmentTotal && 
           t.monthKey === futMonthKey
@@ -1962,8 +1961,8 @@
         if (!exists) {
           appState.transactions.push({
             id: Date.now() + Math.random(),
-            envId: baseTx.envId,
-            envelopeId: baseTx.envelopeId,
+            envId: baseTx.envId || baseTx.envelopeId || 'var_general',
+            envelopeId: baseTx.envelopeId || baseTx.envId || 'var_general',
             merchant: baseTx.merchant,
             category: baseTx.category,
             amount: baseTx.amount,
@@ -2078,7 +2077,6 @@
                 const txMonthKey = parsedDate ? parsedDate.monthKey : getCurrentMonthKey();
                 const formattedDateStr = parsedDate ? `${String(parsedDate.day).padStart(2, '0')}/${String(parsedDate.month).padStart(2, '0')}/${parsedDate.year}` : dateVal;
 
-                // בדיקת כפילויות עמידה (מול הזיכרון הקיים + מול הקובץ הנוכחי)
                 const isDuplicateInApp = appState.transactions.some(existing => {
                   const sameMerchant = existing.merchant.trim().toLowerCase() === merchantVal.trim().toLowerCase();
                   const sameAmount = Math.abs(existing.amount - amtNum) < 0.01;
@@ -2154,7 +2152,7 @@
 
       appState.pendingImportTxs.forEach((t, idx) => {
         const badgeHtml = t.isPepper ? `<span class="badge-pepper">Pepper</span>` : `<span class="badge-isra">הבינלאומי</span>`;
-        const instBadge = (t.installmentTotal && t.installmentTotal > 1) ? `<span class="badge-inst">💳 תשלום ${t.installmentCurrent}/${t.installmentTotal}</span>` : '';
+        const instBadge = (t.installmentTotal && t.installmentTotal > 1) ? `<span class="badge-inst">💳 ${t.installmentCurrent} מתוך ${t.installmentTotal}</span>` : '';
         const matchedName = t.matchedFixedId ? (appState.generalFixedList.find(f => f.id === t.matchedFixedId)?.name || '') : '';
         const envId = t.envId || t.envelopeId;
 
@@ -2285,7 +2283,6 @@
       render();
     }
 
-    // תכונה 5: כניסה למעטפה ספציפית - מציג שימוש מתוך תקציב, קטגוריות וכפתור פאי
     function openEnvModal(envId) {
       appState.activeModalEnvId = envId;
       appState.activeCategoryFilter = 'ALL';
@@ -2408,6 +2405,16 @@
       }
     }
 
+    function getTxSortValue(t) {
+      if (!t) return 0;
+      if (t.date === 'צפי חודשי') return 99999999;
+      const parsed = parseTxDate(t.date);
+      if (parsed) {
+        return parsed.year * 10000 + parsed.month * 100 + parsed.day;
+      }
+      return typeof t.id === 'number' ? t.id : 0;
+    }
+
     function renderModalTxsList() {
       const container = document.getElementById('modalTxList');
       if (!container) return;
@@ -2419,6 +2426,16 @@
         txs = txs.filter(t => t.category === appState.activeCategoryFilter);
       }
 
+      // מיון העסקאות: החיוב הכי אחרון מופיע ראשון למעלה, ותחילת החודש מופיעה בתחתית
+      txs.sort((a, b) => {
+        const valA = getTxSortValue(a);
+        const valB = getTxSortValue(b);
+        if (valA !== valB) {
+          return valB - valA;
+        }
+        return (b.id || 0) - (a.id || 0);
+      });
+
       if (txs.length === 0) {
         container.innerHTML = `<div style="text-align:center; color:#94a3b8; padding:20px;">אין עסקאות להצגה בקטגוריה זו</div>`;
         return;
@@ -2427,7 +2444,7 @@
       let html = '';
       txs.forEach(t => {
         const badgeHtml = t.isPepper ? `<span class="badge-pepper">Pepper</span>` : `<span class="badge-isra">הבינלאומי</span>`;
-        const instBadge = (t.installmentTotal && t.installmentTotal > 1) ? `<span class="badge-inst">💳 תשלום ${t.installmentCurrent}/${t.installmentTotal}</span>` : '';
+        const instBadge = (t.installmentTotal && t.installmentTotal > 1) ? `<span class="badge-inst">💳 ${t.installmentCurrent} מתוך ${t.installmentTotal}</span>` : '';
 
         html += `
           <div class="tx-item">
@@ -2452,7 +2469,6 @@
       container.innerHTML = html;
     }
 
-    // תכונה 2: הוספה ועריכת הערה לכל שורת עסקה
     function editTxNote(txId) {
       const t = appState.transactions.find(x => x.id == txId);
       if (!t) return;
@@ -2471,7 +2487,6 @@
       }
     }
 
-    // תכונה 3: שינוי קטגוריה פנימית במלל חופשי או ברשימה נפתחת
     function openCategoryEditModal(txId) {
       const t = appState.transactions.find(x => x.id == txId);
       if (!t) return;
@@ -2857,7 +2872,6 @@
       openSavingsModal();
     }
 
-    // תכונה 4: לחצן "צפי/בדיקה" מאפשר לבחור לאיזו מעטפה להוסיף את ההוצאה
     function addForecastTxGlobal() {
       document.getElementById('modalTitle').innerText = "+ הוספת הוצאה צפויה / בדיקה";
 

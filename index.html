@@ -561,7 +561,7 @@
         { id: 'inc_btl_disability', source: 'ביטוח לאומי ג"נ', defaultAmount: 1943, bank: 'International', monthlyData: {} }
       ],
 
-      excludeFromNet: ['var_other'],       savingsList: [
+      savingsList: [
         { id: 's1', name: 'חיסכון כללי', target: 1500, bank: 'Pepper', isDone: false },
         { id: 's2', name: 'חיסכון לביא', target: 150, bank: 'Pepper', isDone: false },
         { id: 's3', name: 'חיסכון שילה', target: 150, bank: 'Pepper', isDone: false },
@@ -577,23 +577,60 @@
       return `${appState.selectedYear}-${String(appState.selectedMonth).padStart(2, '0')}`;
     }
 
-    function isTxInSelectedMonth(t) {
-      if (t.monthKey) return t.monthKey === getCurrentMonthKey();
-      if (t.date === 'צפי חודשי') return true;
-      
-      let parts = [];
-      if (t.date.includes('/')) {
-        parts = t.date.split('/');
+    // מפענח תאריכים מוחלט המונע זליגות מחודש לחודש
+    function parseTxDate(dateStr) {
+      if (!dateStr || dateStr === 'צפי חודשי') return null;
+      let str = String(dateStr).trim();
+      let day, month, year;
+
+      if (str.includes('/')) {
+        let parts = str.split('/');
         if (parts.length === 3) {
-          return parseInt(parts[1]) === appState.selectedMonth && parseInt(parts[2]) === appState.selectedYear;
+          day = parseInt(parts[0], 10);
+          month = parseInt(parts[1], 10);
+          year = parseInt(parts[2], 10);
         }
-      } else if (t.date.includes('-')) {
-        parts = t.date.split('-');
+      } else if (str.includes('-')) {
+        let parts = str.split('-');
         if (parts.length === 3) {
-          return parseInt(parts[1]) === appState.selectedMonth && parseInt(parts[0]) === appState.selectedYear;
+          if (parts[0].length === 4) { // YYYY-MM-DD
+            year = parseInt(parts[0], 10);
+            month = parseInt(parts[1], 10);
+            day = parseInt(parts[2], 10);
+          } else { // DD-MM-YYYY
+            day = parseInt(parts[0], 10);
+            month = parseInt(parts[1], 10);
+            year = parseInt(parts[2], 10);
+          }
+        }
+      } else if (str.includes('.')) {
+        let parts = str.split('.');
+        if (parts.length === 3) {
+          day = parseInt(parts[0], 10);
+          month = parseInt(parts[1], 10);
+          year = parseInt(parts[2], 10);
         }
       }
-      return true;
+
+      if (year < 100) year += 2000;
+      if (isNaN(day) || isNaN(month) || isNaN(year)) return null;
+
+      return { day, month, year, monthKey: `${year}-${String(month).padStart(2, '0')}` };
+    }
+
+    function isTxInSelectedMonth(t) {
+      if (!t) return false;
+      if (t.date === 'צפי חודשי') return true;
+
+      const currentKey = getCurrentMonthKey();
+      if (t.monthKey && t.monthKey === currentKey) return true;
+
+      const parsed = parseTxDate(t.date);
+      if (parsed) {
+        return parsed.month === appState.selectedMonth && parsed.year === appState.selectedYear;
+      }
+
+      return false;
     }
 
     function navigateMonth(direction) {
@@ -900,7 +937,7 @@
       let totalBudgetVar = 0;
 
       appState.envelopes.forEach(env => {
-        let envTxs = appState.transactions.filter(t => t.envId === env.id && isTxInSelectedMonth(t));
+        let envTxs = appState.transactions.filter(t => (t.envId === env.id || t.envelopeId === env.id) && isTxInSelectedMonth(t));
         if (searchQuery) {
           envTxs = envTxs.filter(t => t.merchant.toLowerCase().includes(searchQuery) || (t.category && t.category.toLowerCase().includes(searchQuery)));
         }
@@ -943,7 +980,7 @@
         `;
       });
 
-      const otherTxs = appState.transactions.filter(t => t.envId === 'var_other' && isTxInSelectedMonth(t));
+      const otherTxs = appState.transactions.filter(t => (t.envId === 'var_other' || t.envelopeId === 'var_other') && isTxInSelectedMonth(t));
       const otherSpent = otherTxs.reduce((sum, t) => sum + t.amount, 0);
       document.getElementById('otherEnvelopeTotalVal').innerText = `₪${otherSpent.toLocaleString()}`;
 
@@ -1011,8 +1048,9 @@
 
       updateBankTransferForecast();
 
-      const totalOverallExpensesActual = totalSpentVar + totalGeneralFixed + totalDirectDebitsSpent + totalCashAmount + otherSpent;
-      const totalOverallExpensesProjected = totalBudgetVar + totalGeneralFixed + totalDirectDebitsSpent + totalCashAmount + otherSpent;
+      // החרגת מעטפת שונות (חיובים מחיסכון) מחישוב הנטו השוטף
+      const totalOverallExpensesActual = totalSpentVar + totalGeneralFixed + totalDirectDebitsSpent + totalCashAmount;
+      const totalOverallExpensesProjected = totalBudgetVar + totalGeneralFixed + totalDirectDebitsSpent + totalCashAmount;
 
       const netBalanceActual = incomes.confirmedIncome - totalOverallExpensesActual;
       const netBalanceProjected = incomes.projectedIncome - totalOverallExpensesProjected;
@@ -1050,7 +1088,7 @@
       if (window.saveStateToCloud) window.saveStateToCloud();
     }
 
-    function openNetBalanceModal() {   document.getElementById('modalTitle').innerText = "📐 תרגיל מאזן מפורט לחודש זה";      const incTotal = appState.incomesList.reduce((acc, inc) => {     const val = inc.monthlyData?.[getCurrentMonthKey()]?.amount ?? inc.defaultAmount;     return acc + (parseFloat(val) || 0);   }, 0);    const ddTotal = appState.directDebits.reduce((acc, dd) => {     const val = dd.monthlyData?.[getCurrentMonthKey()]?.amount ?? dd.defaultAmount;     return acc + (parseFloat(val) || 0);   }, 0);    const varTxs = appState.transactions.filter(t => isTxInSelectedMonth(t) && t.envelopeId !== 'var_other');   const varTotal = varTxs.reduce((acc, t) => acc + (parseFloat(t.amount) || 0), 0);    const gfTxs = appState.transactions.filter(t => isTxInSelectedMonth(t) && t.envelopeId === 'general_fixed');   const gfTotal = gfTxs.reduce((acc, t) => acc + (parseFloat(t.amount) || 0), 0);    const netBalance = incTotal - ddTotal - varTotal - gfTotal;   const isPos = netBalance >= 0;    let body = `     <div class="net-breakdown-card green">       <div class="net-breakdown-row total">         <span>1. סה"כ הכנסות הצפויות/התקבלו</span>         <span>₪${incTotal.toLocaleString()}</span>       </div>     </div>      <div class="net-breakdown-card red">       <div class="net-breakdown-row total">         <span>2. הוראות קבע בעו"ש (משכנתא + גן)</span>         <span>-₪${ddTotal.toLocaleString()}</span>       </div>     </div>      <div class="net-breakdown-card red">       <div class="net-breakdown-row total">         <span>3. מעטפות משתנות, בלת"ם ורכב (ללא שונות)</span>         <span>-₪${varTotal.toLocaleString()}</span>       </div>     </div>      <div class="net-breakdown-card red">       <div class="net-breakdown-row total">         <span>4. קבועות באשראי</span>         <span>-₪${gfTotal.toLocaleString()}</span>       </div>     </div>      <div class="net-breakdown-card ${isPos ? 'green' : 'red'}" style="margin-top:16px;">       <div class="net-breakdown-row total" style="font-size:16px;">         <span>הפרש נטו סופי לחודש זה:</span>         <span>₪${netBalance.toLocaleString()}</span>       </div>     </div>   `;    document.getElementById('modalBody').innerHTML = body;   document.getElementById('modal').style.display = 'flex'; } {
+    function openNetBalanceModal() {
       const monthName = MONTH_NAMES[appState.selectedMonth - 1];
       const monthYearStr = `${monthName} ${appState.selectedYear}`;
       const currentMonthKey = getCurrentMonthKey();
@@ -1096,7 +1134,7 @@
       let totalSpentVar = 0;
 
       appState.envelopes.forEach(env => {
-        const spent = currentMonthTxs.filter(t => t.envId === env.id).reduce((s, t) => s + t.amount, 0);
+        const spent = currentMonthTxs.filter(t => (t.envId === env.id || t.envelopeId === env.id)).reduce((s, t) => s + t.amount, 0);
         totalSpentVar += spent;
         varEnvelopesRowsHtml += `
           <div class="net-breakdown-row">
@@ -1106,12 +1144,12 @@
         `;
       });
 
-      const otherSpent = currentMonthTxs.filter(t => t.envId === 'var_other').reduce((s, t) => s + t.amount, 0);
+      const otherSpent = currentMonthTxs.filter(t => (t.envId === 'var_other' || t.envelopeId === 'var_other')).reduce((s, t) => s + t.amount, 0);
       if (otherSpent > 0) {
         varEnvelopesRowsHtml += `
-          <div class="net-breakdown-row">
-            <span>🔹 שונות (חיובים מחיסכון)</span>
-            <span style="font-weight:bold; color:#7e22ce;">-₪${otherSpent.toLocaleString()}</span>
+          <div class="net-breakdown-row" style="opacity: 0.75;">
+            <span>🔹 שונות (חיובים מחיסכון - מוחרג מחישוב הנטו)</span>
+            <span style="font-weight:bold; color:#7e22ce; text-decoration: line-through;">-₪${otherSpent.toLocaleString()}</span>
           </div>
         `;
       }
@@ -1159,9 +1197,10 @@
         `;
       });
 
-      const totalOverallExpensesActual = totalSpentVar + totalGeneralFixed + totalDirectDebits + totalCash + otherSpent;
+      // החרגת "שונות" מחישוב סך הכל הוצאות ומאזן נטו בפועל
+      const totalOverallExpensesActual = totalSpentVar + totalGeneralFixed + totalDirectDebits + totalCash;
       const totalBudgetVar = appState.envelopes.reduce((s, e) => s + e.budget, 0);
-      const totalOverallExpensesProjected = totalBudgetVar + totalGeneralFixed + totalDirectDebits + totalCash + otherSpent;
+      const totalOverallExpensesProjected = totalBudgetVar + totalGeneralFixed + totalDirectDebits + totalCash;
 
       const netActual = totalIncomeConfirmed - totalOverallExpensesActual;
       const netProjected = totalIncomeProjected - totalOverallExpensesProjected;
@@ -1204,8 +1243,8 @@
           <div style="font-weight:800; font-size:14px; margin-bottom:6px;">🛒 3. מעטפות משתנות, בלת"מים ורכב (🔴 -)</div>
           ${varEnvelopesRowsHtml}
           <div class="net-breakdown-row total">
-            <span>סה"כ הוצאות משתנות בפועל:</span>
-            <span>-₪${(totalSpentVar + otherSpent).toLocaleString()}</span>
+            <span>סה"כ הוצאות משתנות בפועל (ללא שונות):</span>
+            <span>-₪${totalSpentVar.toLocaleString()}</span>
           </div>
         </div>
 
@@ -1237,7 +1276,7 @@
         </div>
 
         <div style="background:${netActual >= 0 ? '#f0fdf4' : '#fef2f2'}; border:2px solid ${netActual >= 0 ? '#166534' : '#ef4444'}; padding:14px; border-radius:14px; margin-top:14px;">
-          <div style="font-size:13px; font-weight:bold; color:#475569; margin-bottom:4px;">משוואת המאזן בפועל (על בסיס הכנסות מאושרות בלבד):</div>
+          <div style="font-size:13px; font-weight:bold; color:#475569; margin-bottom:4px;">משוואת המאזן בפועל (על בסיס הכנסות מאושרות בלבד וללא מעטפת שונות):</div>
           <div style="font-size:14px; font-weight:700; color:#0f172a; margin-bottom:8px; dir:ltr; text-align:right;">
             ₪${totalIncomeConfirmed.toLocaleString()} (הכנסות מאושרות) − ₪${totalOverallExpensesActual.toLocaleString()} (הוצאות בפועל)
           </div>
@@ -1261,7 +1300,7 @@
       const currentMonthTxs = appState.transactions.filter(t => isTxInSelectedMonth(t));
 
       const pepperCardSpent = currentMonthTxs.filter(t => t.isPepper).reduce((s, t) => s + t.amount, 0);
-      const israCardSpent = currentMonthTxs.filter(t => !t.isPepper && t.envId !== 'var_other').reduce((s, t) => s + t.amount, 0);
+      const israCardSpent = currentMonthTxs.filter(t => !t.isPepper && t.envId !== 'var_other' && t.envelopeId !== 'var_other').reduce((s, t) => s + t.amount, 0);
       
       let israFixedSpent = 0;
       appState.generalFixedList.forEach(item => {
@@ -1556,7 +1595,7 @@
       const incomes = getCalculatedIncomes();
 
       const currentMonthTxs = appState.transactions.filter(t => isTxInSelectedMonth(t));
-      const totalSpentVar = currentMonthTxs.filter(t => t.envId !== 'var_other').reduce((sum, t) => sum + t.amount, 0);
+      const totalSpentVar = currentMonthTxs.filter(t => t.envId !== 'var_other' && t.envelopeId !== 'var_other').reduce((sum, t) => sum + t.amount, 0);
 
       let totalGeneralFixed = 0;
       appState.generalFixedList.forEach(item => {
@@ -1580,12 +1619,12 @@
         [],
         ["תחום / קטגוריה", "סכום כולל (ש\"ח)", "הערות / סטטוס"],
         ["הכנסות שאושר שהתקבלו בפועל", incomes.confirmedIncome, `צפי מתוכנן מלא: ₪${incomes.projectedIncome.toLocaleString()}`],
-        ["מעטפות משתנות ורכב", totalSpentVar, "משתנות, בלת\"מים ודלק"],
+        ["מעטפות משתנות ורכב (ללא שונות)", totalSpentVar, "משתנות, בלת\"מים ודלק"],
         ["מעטפת קבועות באשראי", totalGeneralFixed, "תקשורת, ארנונה, חשמל וביטוחים"],
         ["הוראות קבע בעו\"ש", totalDirectDebits, "משכנתא וגן של בניה"],
         ["משיכות מזומן", totalCash, "בייביסיטר, אירועים ועמלות"],
         [],
-        ["סה\"כ מצטבר הוצאות שוטפות בפועל", totalExpenses, "סיכום כלל ההוצאות והמשיכות"],
+        ["סה\"כ מצטבר הוצאות שוטפות בפועל", totalExpenses, "סיכום כלל ההוצאות והמשיכות (ללא שונות)"],
         ["מאזן נטו בפועל כרגע", netResultActual, netResultActual >= 0 ? "עודף חיובי" : "חריגה / טרם נקלטו הכנסות"]
       ];
 
@@ -1601,14 +1640,15 @@
 
       let runningVarTotal = 0;
       currentMonthTxs.forEach(t => {
-        const envObj = appState.envelopes.find(e => e.id === t.envId);
-        const envName = envObj ? envObj.name : (t.envId === 'var_other' ? 'שונות (חיסכון)' : 'משתנות');
+        const envId = t.envId || t.envelopeId;
+        const envObj = appState.envelopes.find(e => e.id === envId);
+        const envName = envObj ? envObj.name : (envId === 'var_other' ? 'שונות (חיסכון - מוחרג)' : 'משתנות');
         sheet2Data.push([t.merchant, envName, t.amount, t.date || '', t.isPepper ? 'Pepper' : 'הבינלאומי']);
-        runningVarTotal += t.amount;
+        if (envId !== 'var_other') runningVarTotal += t.amount;
       });
 
       sheet2Data.push([]);
-      sheet2Data.push(["סה\"כ מצטבר משתנות ורכב", "", runningVarTotal, "", ""]);
+      sheet2Data.push(["סה\"כ מצטבר משתנות ורכב (ללא שונות)", "", runningVarTotal, "", ""]);
 
       const wsVar = XLSX.utils.aoa_to_sheet(sheet2Data);
       setupRTLSheet(wsVar, [32, 22, 18, 16, 16]);
@@ -1698,7 +1738,7 @@
       const incomes = getCalculatedIncomes();
 
       const currentMonthTxs = appState.transactions.filter(t => isTxInSelectedMonth(t));
-      const totalSpentVar = currentMonthTxs.filter(t => t.envId !== 'var_other').reduce((sum, t) => sum + t.amount, 0);
+      const totalSpentVar = currentMonthTxs.filter(t => t.envId !== 'var_other' && t.envelopeId !== 'var_other').reduce((sum, t) => sum + t.amount, 0);
 
       let totalGeneralFixed = 0;
       appState.generalFixedList.forEach(item => {
@@ -1730,14 +1770,14 @@
             </thead>
             <tbody>
               <tr><td><b>הכנסות מאושרות (V)</b></td><td style="color:#10b981; font-weight:bold;">₪${incomes.confirmedIncome.toLocaleString()}</td><td>מתוך צפי כולל של ₪${incomes.projectedIncome.toLocaleString()}</td></tr>
-              <tr><td><b>מעטפות משתנות ורכב</b></td><td>₪${totalSpentVar.toLocaleString()}</td><td>משתנות, בלת"מים ודלק</td></tr>
+              <tr><td><b>מעטפות משתנות ורכב</b></td><td>₪${totalSpentVar.toLocaleString()}</td><td>משתנות, בלת"מים ודלק (ללא שונות)</td></tr>
               <tr><td><b>קבועות באשראי</b></td><td>₪${totalGeneralFixed.toLocaleString()}</td><td>תקשורת, ארנונה, חשמל וביטוחים</td></tr>
               <tr><td><b>הוראות קבע בעו"ש</b></td><td>₪${totalDirectDebits.toLocaleString()}</td><td>משכנתא וגן של בניה</td></tr>
               <tr><td><b>משיכות מזומן</b></td><td>₪${totalCash.toLocaleString()}</td><td>אירועים, בייביסיטר ועמלות</td></tr>
               <tr style="background:#f1f5f9; font-weight:bold; border-top:2px solid #cbd5e1;">
                 <td><b>סה"כ מצטבר הוצאות שוטפות</b></td>
                 <td style="color:#ef4444; font-size:14px;"><b>₪${totalExpenses.toLocaleString()}</b></td>
-                <td>סיכום כלל ההוצאות והמשיכות</td>
+                <td>סיכום כלל ההוצאות והמשיכות (ללא שונות)</td>
               </tr>
               <tr style="background:#e0f2fe; font-weight:bold; border-top:2px solid #0284c7;">
                 <td><b>מאזן נטו בפועל כרגע</b></td>
@@ -1756,12 +1796,13 @@
             </thead>
             <tbody>
               ${currentMonthTxs.map(t => {
-                const envObj = appState.envelopes.find(e => e.id === t.envId);
-                const envName = envObj ? envObj.name : (t.envId === 'var_other' ? 'שונות (חיסכון)' : 'משתנות');
+                const envId = t.envId || t.envelopeId;
+                const envObj = appState.envelopes.find(e => e.id === envId);
+                const envName = envObj ? envObj.name : (envId === 'var_other' ? 'שונות (חיסכון - מוחרג)' : 'משתנות');
                 return `<tr><td>${t.merchant}</td><td>${envName}</td><td>${t.date || ''}</td><td>${t.isPepper ? 'Pepper' : 'הבינלאומי'}</td><td><b>₪${t.amount.toLocaleString()}</b></td></tr>`;
               }).join('')}
               <tr style="background:#eff6ff; font-weight:bold; border-top:2px solid #2563eb;">
-                <td colspan="4"><b>סה"כ מצטבר משתנות ורכב</b></td>
+                <td colspan="4"><b>סה"כ מצטבר משתנות ורכב (ללא שונות)</b></td>
                 <td style="color:#1e40af; font-size:14px;"><b>₪${totalSpentVar.toLocaleString()}</b></td>
               </tr>
             </tbody>
@@ -1848,7 +1889,6 @@
       
       const file = fileInput.files[0];
       const reader = new FileReader();
-      const currentMonthKey = getCurrentMonthKey();
 
       const foodKeywords = ['יוחננוף', 'רמי לוי', 'שופרסל', 'אושר עד', 'ויקטורי', 'מגה', 'קרפור', 'סופר', 'מינימרקט', 'מכולת', 'ירקות', 'פירות', 'מאפיה', 'מאפה', 'קפה', 'קפיטריה', 'מסעדה', 'פיצה', 'פלאפל', 'שוארמה', 'בורגר', 'מקדונלד', 'גלידה', 'פארם', 'מזון', 'אוכל', 'סופרמרקט'];
       const carKeywords = ['דלק', 'פז', 'סונול', 'דור אלון', 'טן', 'מיקה', 'סדש', 'חניה', 'פנגו', 'סלו פארק', 'רכבת', 'אגד', 'קווים', 'מטרופולין', 'תחבורה', 'מונית', 'gett', 'yango'];
@@ -1933,7 +1973,16 @@
                   }
                 }
 
-                const isDuplicate = appState.transactions.some(existing => existing.merchant === merchantVal && existing.amount === amtNum && existing.date === dateVal);
+                const parsedDate = parseTxDate(dateVal);
+                const txMonthKey = parsedDate ? parsedDate.monthKey : getCurrentMonthKey();
+
+                // מנגנון זהוי כפילויות חסין ועמיד בפני הבדלי תווים ותאריכים
+                const isDuplicate = appState.transactions.some(existing => {
+                  const sameMerchant = existing.merchant.trim().toLowerCase() === merchantVal.trim().toLowerCase();
+                  const sameAmount = Math.abs(existing.amount - amtNum) < 0.01;
+                  const sameDate = existing.date.trim() === dateVal.trim() || (existing.monthKey && existing.monthKey === txMonthKey);
+                  return sameMerchant && sameAmount && sameDate;
+                });
 
                 if (!isDuplicate) {
                   const lowerM = merchantVal.toLowerCase();
@@ -1944,7 +1993,7 @@
                     return fixed.matchKeywords.some(kw => lowerM.includes(kw.toLowerCase()));
                   });
 
-                  let envId = 'var_unplanned'; 
+                  let envId = 'var_general'; 
 
                   if (matchedFixedItem) {
                     envId = 'fixed_matched_' + matchedFixedItem.id;
@@ -1954,16 +2003,19 @@
                     envId = 'var_car';
                   } else if (foodKeywords.some(kw => lowerM.includes(kw) || lowerC.includes(kw))) {
                     envId = 'var_general';
+                  } else {
+                    envId = 'var_unplanned';
                   }
 
                   foundTxs.push({
                     id: Date.now() + Math.random(),
                     envId: envId,
+                    envelopeId: envId,
                     merchant: merchantVal,
                     category: categoryVal || 'כללי',
                     amount: amtNum,
                     date: dateVal,
-                    monthKey: getCurrentMonthKey(),
+                    monthKey: txMonthKey,
                     isPepper: isMax,
                     source: isMax ? 'Pepper' : 'הבינלאומי',
                     matchedFixedId: matchedFixedItem ? matchedFixedItem.id : null
@@ -1991,9 +2043,10 @@
       appState.pendingImportTxs.forEach((t, idx) => {
         const badgeHtml = t.isPepper ? `<span class="badge-pepper">Pepper</span>` : `<span class="badge-isra">הבינלאומי</span>`;
         const matchedName = t.matchedFixedId ? (appState.generalFixedList.find(f => f.id === t.matchedFixedId)?.name || '') : '';
+        const envId = t.envId || t.envelopeId;
 
         let envOptionsHtml = appState.envelopes.map(e => `
-          <option value="${e.id}" ${t.envId === e.id ? 'selected' : ''}>${e.name}</option>
+          <option value="${e.id}" ${envId === e.id ? 'selected' : ''}>${e.name}</option>
         `).join('');
 
         html += `
@@ -2008,8 +2061,8 @@
               <span style="font-weight:bold;">₪${t.amount.toLocaleString()}</span>
               <select class="select-env-preview" onchange="changePendingTxEnv(${idx}, this.value)">
                 ${envOptionsHtml}
-                <option value="var_other" ${t.envId === 'var_other' ? 'selected' : ''}>שונות (חיסכון)</option>
-                <option value="fixed" ${t.envId.startsWith('fixed_matched_') || t.envId === 'fixed' ? 'selected' : ''}>📌 קבועות ${matchedName ? '(' + matchedName + ')' : ''}</option>
+                <option value="var_other" ${envId === 'var_other' ? 'selected' : ''}>שונות (חיסכון)</option>
+                <option value="fixed" ${envId.startsWith('fixed_matched_') || envId === 'fixed' ? 'selected' : ''}>📌 קבועות ${matchedName ? '(' + matchedName + ')' : ''}</option>
               </select>
               <button class="btn-delete-item" onclick="removePendingTx(${idx})">🗑️</button>
             </div>
@@ -2029,6 +2082,7 @@
         openPendingTxFixedSelectionModal(idx);
       } else {
         appState.pendingImportTxs[idx].envId = newEnvId;
+        appState.pendingImportTxs[idx].envelopeId = newEnvId;
         appState.pendingImportTxs[idx].matchedFixedId = null;
       }
     }
@@ -2063,6 +2117,7 @@
     function confirmPendingTxFixedSelection(idx, fixedId) {
       if (appState.pendingImportTxs[idx]) {
         appState.pendingImportTxs[idx].envId = 'fixed_matched_' + fixedId;
+        appState.pendingImportTxs[idx].envelopeId = 'fixed_matched_' + fixedId;
         appState.pendingImportTxs[idx].matchedFixedId = fixedId;
       }
       renderPreviewModal();
@@ -2082,7 +2137,8 @@
 
     function confirmImport() {
       appState.pendingImportTxs.forEach(t => {
-        if (t.envId.startsWith('fixed_matched_') || t.envId === 'fixed') {
+        const envId = t.envId || t.envelopeId;
+        if (envId.startsWith('fixed_matched_') || envId === 'fixed') {
           if (t.matchedFixedId) {
             const currentMonthKey = getCurrentMonthKey();
             const fixedItem = appState.generalFixedList.find(f => f.id === t.matchedFixedId);
@@ -2104,7 +2160,7 @@
     function openEnvModal(envId) {
       appState.activeModalEnvId = envId;
       const envName = (appState.envelopes.find(e => e.id === envId)?.name || (envId === 'var_other' ? 'שונות' : 'מעטפה'));
-      const allEnvTxs = appState.transactions.filter(t => t.envId === envId && isTxInSelectedMonth(t));
+      const allEnvTxs = appState.transactions.filter(t => (t.envId === envId || t.envelopeId === envId) && isTxInSelectedMonth(t));
 
       document.getElementById('modalTitle').innerText = `פירוט מעטפת ${envName}`;
       let html = `<div id="modalTxList"></div>`;
@@ -2209,6 +2265,7 @@
       const t = appState.transactions.find(x => x.id == txId);
       if (t) {
         t.envId = envId;
+        t.envelopeId = envId;
         render();
         if (appState.activeModalEnvId) openEnvModal(appState.activeModalEnvId);
         else closeModal();
@@ -2502,9 +2559,12 @@
       const amount = parseFloat(prompt('סכום צפוי בש"ח:'));
       if (!amount) return;
 
+      const envId = appState.envelopes[0] ? appState.envelopes[0].id : 'var_general';
+
       appState.transactions.push({
         id: Date.now(),
-        envId: appState.envelopes[0] ? appState.envelopes[0].id : 'var_general',
+        envId: envId,
+        envelopeId: envId,
         merchant: merchant,
         amount: amount,
         date: 'צפי חודשי',
@@ -2645,5 +2705,5 @@
 
     render();
   </script>
-<script>   // דריסה בטוחה להחרגת מעטפת שונות מחישובי הנטו   const origIsTx = window.isTxInSelectedMonth;   if (typeof origIsTx === 'function') {     window.isTxInSelectedMonth = function(t) {       if (t && t.envelopeId === 'var_other') return false;       return origIsTx(t);     };   } </script> </body>
+</body>
 </html>

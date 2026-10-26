@@ -180,55 +180,33 @@
     .net-formula-row { display: flex; justify-content: space-between; align-items: center; font-size: 13px; font-weight: 600; }
     .net-result-row { display: flex; justify-content: space-between; align-items: flex-start; font-size: 15px; font-weight: 800; border-top: 1px dashed rgba(0,0,0,0.15); padding-top: 6px; margin-top: 2px; }
     
-    /* MODAL STYLES - FIXED STICKY HEADER & FLOATING CLOSE BUTTON */
-    .modal { display: none; position: fixed; top:0; left:0; right:0; bottom:0; background: rgba(0,0,0,0.5); justify-content: center; align-items: center; z-index: 1000; padding: 16px; }
-    .modal-content { 
-      background: #fff; 
-      width: 100%; 
-      max-width: 520px; 
-      max-height: 85vh; 
-      border-radius: 20px; 
-      padding: 20px; 
-      overflow-y: auto; 
-      position: relative; 
-      box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+    .modal { display: none; position: fixed; top:0; left:0; right:0; bottom:0; background: rgba(0,0,0,0.5); justify-content: center; align-items: center; z-index: 100; padding: 16px; }
+    .modal-content { background: #fff; width: 100%; max-width: 520px; max-height: 85vh; border-radius: 20px; padding: 20px; overflow-y: auto; position: relative; }
+    .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+    
+    /* Sticky Close-X Button Fix */
+    .close-x-floating {
+      position: sticky;
+      top: 0;
+      float: left;
+      z-index: 9999;
+      background: #ffffff;
+      color: #475569;
+      width: 32px;
+      height: 32px;
+      font-size: 16px;
+      font-weight: bold;
+      border-radius: 50%;
+      border: 1px solid #cbd5e1;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-top: -4px;
+      margin-bottom: -28px;
     }
     
-    /* Sticky Header Component inside Modal */
-    .modal-header { 
-      position: sticky; 
-      top: -20px; 
-      background: #ffffff; 
-      z-index: 100; 
-      padding: 14px 20px; 
-      margin: -20px -20px 16px -20px; 
-      border-bottom: 1px solid var(--border); 
-      display: flex; 
-      justify-content: space-between; 
-      align-items: center; 
-      border-top-left-radius: 20px;
-      border-top-right-radius: 20px;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.03);
-    }
-    .modal-header h3 { font-size: 17px; font-weight: bold; color: var(--text); }
-    
-    .close-x { 
-      background: #f1f5f9; 
-      color: #475569; 
-      border: 1px solid #cbd5e1; 
-      font-size: 16px; 
-      font-weight: bold; 
-      width: 34px; 
-      height: 34px; 
-      border-radius: 50%; 
-      cursor: pointer; 
-      display: flex; 
-      align-items: center; 
-      justify-content: center; 
-      transition: background 0.15s;
-    }
-    .close-x:hover { background: #e2e8f0; color: #0f172a; }
-
     .badge-pepper { font-size: 10px; background: var(--pepper-pink); color: #ffffff; padding: 2px 8px; border-radius: 6px; font-weight: bold; display: inline-block; box-shadow: 0 0 8px rgba(255, 0, 127, 0.3); }
     .badge-isra { font-size: 10px; background: #3b82f6; color: #ffffff; padding: 2px 8px; border-radius: 6px; font-weight: bold; display: inline-block; }
     
@@ -434,12 +412,12 @@
     </div>
   </div>
 
-  <!-- Modal Window Structure with Sticky Header -->
+  <!-- Modal -->
   <div id="modal" class="modal">
     <div class="modal-content">
+      <button class="close-x-floating" onclick="closeModal()" title="סגור חלון">✕</button>
       <div class="modal-header">
         <h3 id="modalTitle"></h3>
-        <button class="close-x" onclick="closeModal()" title="סגור חלון">✕</button>
       </div>
       <div id="modalBody"></div>
       <button onclick="closeModal()" style="width:100%; padding:12px; margin-top:16px; border-radius:10px; border:none; background:#f1f5f9; font-weight:bold; cursor:pointer;">סגור</button>
@@ -621,39 +599,48 @@
       return `${appState.selectedYear}-${String(appState.selectedMonth).padStart(2, '0')}`;
     }
 
-    // מפענח תאריכים מוחלט המונע זליגות מחודש לחודש
-    function parseTxDate(dateStr) {
-      if (!dateStr || dateStr === 'צפי חודשי') return null;
-      let str = String(dateStr).trim();
-      let day, month, year;
+    // מפענח תאריכים מורחב התומך במספרי אקסל נומריים וכל סוגי המחרוזות
+    function parseTxDate(dateVal) {
+      if (!dateVal || dateVal === 'צפי חודשי') return null;
 
-      if (str.includes('/')) {
-        let parts = str.split('/');
-        if (parts.length === 3) {
+      // טיפול בתאריך נומרי של אקסל (Serial Date Number)
+      if (typeof dateVal === 'number' || (!isNaN(Number(dateVal)) && Number(dateVal) > 30000 && Number(dateVal) < 60000)) {
+        const serial = Number(dateVal);
+        const dt = new Date(Math.round((serial - 25569) * 86400 * 1000));
+        if (!isNaN(dt.getTime())) {
+          const day = dt.getDate();
+          const month = dt.getMonth() + 1;
+          const year = dt.getFullYear();
+          return { day, month, year, monthKey: `${year}-${String(month).padStart(2, '0')}` };
+        }
+      }
+
+      let str = String(dateVal).trim();
+      if (str.includes(' ')) {
+        str = str.split(' ')[0]; // הסרת שעות במידה וקיימות
+      }
+
+      let day, month, year;
+      let parts = [];
+
+      if (str.includes('/')) parts = str.split('/');
+      else if (str.includes('-')) parts = str.split('-');
+      else if (str.includes('.')) parts = str.split('.');
+
+      if (parts.length === 3) {
+        if (parts[0].length === 4) { // YYYY-MM-DD
+          year = parseInt(parts[0], 10);
+          month = parseInt(parts[1], 10);
+          day = parseInt(parts[2], 10);
+        } else { // DD-MM-YYYY או DD-MM-YY
           day = parseInt(parts[0], 10);
           month = parseInt(parts[1], 10);
           year = parseInt(parts[2], 10);
         }
-      } else if (str.includes('-')) {
-        let parts = str.split('-');
-        if (parts.length === 3) {
-          if (parts[0].length === 4) { // YYYY-MM-DD
-            year = parseInt(parts[0], 10);
-            month = parseInt(parts[1], 10);
-            day = parseInt(parts[2], 10);
-          } else { // DD-MM-YYYY
-            day = parseInt(parts[0], 10);
-            month = parseInt(parts[1], 10);
-            year = parseInt(parts[2], 10);
-          }
-        }
-      } else if (str.includes('.')) {
-        let parts = str.split('.');
-        if (parts.length === 3) {
-          day = parseInt(parts[0], 10);
-          month = parseInt(parts[1], 10);
-          year = parseInt(parts[2], 10);
-        }
+      } else if (parts.length === 2) { // MM/YYYY
+        month = parseInt(parts[0], 10);
+        year = parseInt(parts[1], 10);
+        day = 1;
       }
 
       if (year < 100) year += 2000;
@@ -662,25 +649,25 @@
       return { day, month, year, monthKey: `${year}-${String(month).padStart(2, '0')}` };
     }
 
+    // בדיקת שיוך חודש מדויקת וחד-משמעית ללא זליגות מחודשים קודמים
     function isTxInSelectedMonth(t) {
       if (!t) return false;
       if (t.date === 'צפי חודשי') return true;
 
       const currentKey = getCurrentMonthKey();
-      if (t.monthKey && t.monthKey === currentKey) return true;
 
+      // במידה וקיים monthKey מוגדר בעסקה - הוא מקור האמת היחיד
+      if (t.monthKey) {
+        return t.monthKey === currentKey;
+      }
+
+      // במידה וחסר monthKey - נפענח לפי מחרוזת התאריך
       const parsed = parseTxDate(t.date);
       if (parsed) {
-        return parsed.month === appState.selectedMonth && parsed.year === appState.selectedYear;
+        return parsed.monthKey === currentKey;
       }
 
       return false;
-    }
-
-    // פונקציית נורמליזציה מתקדמת למניעת כפילויות חסינה
-    function normalizeMerchant(str) {
-      if (!str) return '';
-      return String(str).toLowerCase().replace(/[^a-z0-9א-ת]/g, '').trim();
     }
 
     function navigateMonth(direction) {
@@ -1247,6 +1234,7 @@
         `;
       });
 
+      // החרגת "שונות" מחישוב סך הכל הוצאות ומאזן נטו בפועל
       const totalOverallExpensesActual = totalSpentVar + totalGeneralFixed + totalDirectDebits + totalCash;
       const totalBudgetVar = appState.envelopes.reduce((s, e) => s + e.budget, 0);
       const totalOverallExpensesProjected = totalBudgetVar + totalGeneralFixed + totalDirectDebits + totalCash;
@@ -1932,7 +1920,6 @@
       });
     }
 
-    // מנגנון ייבוא ועיבוד אקסל חסין כפילויות במאה אחוז
     function processExcelSmart() {
       const fileInput = document.getElementById('excelFile');
       if (!fileInput.files.length) return alert('אנא בחר קובץ אקסל');
@@ -1980,7 +1967,7 @@
 
             for (let r = headerIdx + 1; r < rows.length; r++) {
               const row = rows[r];
-              if (!row || !row[dateCol]) continue;
+              if (!row || row[dateCol] === undefined || row[dateCol] === null) continue;
               
               const dateVal = String(row[dateCol]).trim();
               if (dateVal.includes('סך הכל') || dateVal.includes('כל ') || dateVal.includes('תנאים')) continue;
@@ -2023,27 +2010,26 @@
                   }
                 }
 
-                const parsedDate = parseTxDate(dateVal);
+                const parsedDate = parseTxDate(row[dateCol]);
                 const txMonthKey = parsedDate ? parsedDate.monthKey : getCurrentMonthKey();
-                const normVal = normalizeMerchant(merchantVal);
+                const formattedDateStr = parsedDate ? `${String(parsedDate.day).padStart(2, '0')}/${String(parsedDate.month).padStart(2, '0')}/${parsedDate.year}` : dateVal;
 
-                // מנגנון זהוי כפילויות מבוסס נורמליזציה חסינה
+                // בדיקת כפילויות מתוקנת: בודקת גם מול העסקאות הקיימות בזיכרון וגם מול העסקאות שנסרקו בקובץ הנוכחי
                 const isDuplicateInApp = appState.transactions.some(existing => {
-                  const sameMerchant = normalizeMerchant(existing.merchant) === normVal || 
-                                       normalizeMerchant(existing.merchant).includes(normVal) || 
-                                       normVal.includes(normalizeMerchant(existing.merchant));
-                  const sameAmount = Math.abs(existing.amount - amtNum) < 0.05;
-                  const sameMonth = (existing.monthKey && existing.monthKey === txMonthKey) || isTxInSelectedMonth(existing);
-                  return sameMerchant && sameAmount && sameMonth;
+                  const sameMerchant = existing.merchant.trim().toLowerCase() === merchantVal.trim().toLowerCase();
+                  const sameAmount = Math.abs(existing.amount - amtNum) < 0.01;
+                  const sameDateOrMonth = existing.date.trim() === formattedDateStr.trim() || (existing.monthKey && existing.monthKey === txMonthKey);
+                  return sameMerchant && sameAmount && sameDateOrMonth;
                 });
 
-                const isDuplicateInPending = foundTxs.some(pending => {
-                  const sameMerchant = normalizeMerchant(pending.merchant) === normVal;
-                  const sameAmount = Math.abs(pending.amount - amtNum) < 0.05;
-                  return sameMerchant && sameAmount;
+                const isDuplicateInCurrentImport = foundTxs.some(pending => {
+                  const sameMerchant = pending.merchant.trim().toLowerCase() === merchantVal.trim().toLowerCase();
+                  const sameAmount = Math.abs(pending.amount - amtNum) < 0.01;
+                  const sameDateOrMonth = pending.date.trim() === formattedDateStr.trim() || pending.monthKey === txMonthKey;
+                  return sameMerchant && sameAmount && sameDateOrMonth;
                 });
 
-                if (!isDuplicateInApp && !isDuplicateInPending) {
+                if (!isDuplicateInApp && !isDuplicateInCurrentImport) {
                   const lowerM = merchantVal.toLowerCase();
                   const lowerC = categoryVal.toLowerCase();
 
@@ -2073,7 +2059,7 @@
                     merchant: merchantVal,
                     category: categoryVal || 'כללי',
                     amount: amtNum,
-                    date: dateVal,
+                    date: formattedDateStr,
                     monthKey: txMonthKey,
                     isPepper: isMax,
                     source: isMax ? 'Pepper' : 'הבינלאומי',
@@ -2097,7 +2083,7 @@
 
     function renderPreviewModal() {
       document.getElementById('modalTitle').innerText = "תצוגה מקדימה - אישור עסקאות";
-      let html = `<p style="font-size:13px; color:#64748b; margin-bottom:12px;">נמצאו <b>${appState.pendingImportTxs.length}</b> עסקאות חדשות. הקוד סיווג אותן אוטומטית, ניתן לשנות מעטפה במידת הצורך:</p>`;
+      let html = `<p style="font-size:13px; color:#64748b; margin-bottom:12px;">נמצאו <b>${appState.pendingImportTxs.length}</b> עסקאות. הקוד סיווג אותן אוטומטית, ניתן לשנות מעטפה במידת הצורך:</p>`;
 
       appState.pendingImportTxs.forEach((t, idx) => {
         const badgeHtml = t.isPepper ? `<span class="badge-pepper">Pepper</span>` : `<span class="badge-isra">הבינלאומי</span>`;
@@ -2762,8 +2748,6 @@
     window.openImportModal = openImportModal;
     window.closeModal = closeModal;
 
-    // Initial load: render app and ensure modal is strictly closed
-    closeModal();
     render();
   </script>
 </body>

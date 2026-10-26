@@ -209,6 +209,7 @@
     
     .badge-pepper { font-size: 10px; background: var(--pepper-pink); color: #ffffff; padding: 2px 8px; border-radius: 6px; font-weight: bold; display: inline-block; box-shadow: 0 0 8px rgba(255, 0, 127, 0.3); }
     .badge-isra { font-size: 10px; background: #3b82f6; color: #ffffff; padding: 2px 8px; border-radius: 6px; font-weight: bold; display: inline-block; }
+    .badge-inst { font-size: 10px; background: #f59e0b; color: #ffffff; padding: 2px 8px; border-radius: 6px; font-weight: bold; display: inline-block; }
     
     .select-env-preview { font-size: 11px; font-weight: bold; padding: 4px 6px; border-radius: 6px; border: 1px solid #cbd5e1; background: #fff; cursor: pointer; outline: none; }
 
@@ -228,6 +229,11 @@
     .btn-action { background: #f1f5f9; border: 1px solid #cbd5e1; padding: 4px 8px; border-radius: 6px; font-size: 12px; cursor: pointer; font-weight: bold; }
     .btn-delete-item { background: #fee2e2; color: #ef4444; border: none; padding: 6px 10px; border-radius: 8px; cursor: pointer; font-size: 14px; }
     .btn-confirm-import { width: 100%; padding: 12px; background: var(--success); color: #fff; border: none; border-radius: 10px; font-weight: bold; cursor: pointer; margin-top: 12px; font-size: 15px; }
+
+    .cat-chip { padding: 5px 10px; border-radius: 20px; font-size: 12px; font-weight: bold; cursor: pointer; border: 1px solid var(--border); background: #f1f5f9; color: var(--text-muted); transition: all 0.2s; }
+    .cat-chip.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+
+    .note-pill { font-size: 11px; background: #fef3c7; color: #92400e; padding: 2px 6px; border-radius: 6px; margin-top: 3px; display: inline-block; font-weight: 500; }
 
     .net-breakdown-card {
       padding: 12px 14px;
@@ -592,7 +598,9 @@
       pendingImportTxs: [],
       rules: {},
       activeModalEnvId: null,
-      chartInstance: null
+      activeCategoryFilter: 'ALL',
+      chartInstance: null,
+      envelopeChartInstance: null
     };
 
     function getCurrentMonthKey() {
@@ -1668,9 +1676,9 @@
       XLSX.utils.book_append_sheet(wb, wsSummary, "סיכום ומאזן");
 
       const sheet2Data = [
-        ["פירוט עסקאות - מעטפות משתנות ורכב", "", "", "", monthYearStr],
+        ["פירוט עסקאות - מעטפות משתנות ורכב", "", "", "", "", monthYearStr],
         [],
-        ["בית עסק", "מעטפת / קטגוריה", "סכום (ש\"ח)", "תאריך", "בנק"]
+        ["בית עסק", "מעטפת / קטגוריה", "סכום (ש\"ח)", "תאריך", "בנק", "תשלומים / הערה"]
       ];
 
       let runningVarTotal = 0;
@@ -1678,15 +1686,18 @@
         const envId = t.envId || t.envelopeId;
         const envObj = appState.envelopes.find(e => e.id === envId);
         const envName = envObj ? envObj.name : (envId === 'var_other' ? 'שונות (חיסכון - מוחרג)' : 'משתנות');
-        sheet2Data.push([t.merchant, envName, t.amount, t.date || '', t.isPepper ? 'Pepper' : 'הבינלאומי']);
+        const instText = (t.installmentTotal && t.installmentTotal > 1) ? `תשלום ${t.installmentCurrent}/${t.installmentTotal}` : '';
+        const notesText = [instText, t.note].filter(Boolean).join(' | ');
+
+        sheet2Data.push([t.merchant, envName, t.amount, t.date || '', t.isPepper ? 'Pepper' : 'הבינלאומי', notesText]);
         if (envId !== 'var_other') runningVarTotal += t.amount;
       });
 
       sheet2Data.push([]);
-      sheet2Data.push(["סה\"כ מצטבר משתנות ורכב (ללא שונות)", "", runningVarTotal, "", ""]);
+      sheet2Data.push(["סה\"כ מצטבר משתנות ורכב (ללא שונות)", "", runningVarTotal, "", "", ""]);
 
       const wsVar = XLSX.utils.aoa_to_sheet(sheet2Data);
-      setupRTLSheet(wsVar, [32, 22, 18, 16, 16]);
+      setupRTLSheet(wsVar, [32, 22, 18, 16, 16, 25]);
       XLSX.utils.book_append_sheet(wb, wsVar, "משתנות ורכב");
 
       const sheet3Data = [
@@ -1834,7 +1845,8 @@
                 const envId = t.envId || t.envelopeId;
                 const envObj = appState.envelopes.find(e => e.id === envId);
                 const envName = envObj ? envObj.name : (envId === 'var_other' ? 'שונות (חיסכון - מוחרג)' : 'משתנות');
-                return `<tr><td>${t.merchant}</td><td>${envName}</td><td>${t.date || ''}</td><td>${t.isPepper ? 'Pepper' : 'הבינלאומי'}</td><td><b>₪${t.amount.toLocaleString()}</b></td></tr>`;
+                const instText = (t.installmentTotal && t.installmentTotal > 1) ? ` (תשלום ${t.installmentCurrent}/${t.installmentTotal})` : '';
+                return `<tr><td>${t.merchant}${instText}</td><td>${envName}</td><td>${t.date || ''}</td><td>${t.isPepper ? 'Pepper' : 'הבינלאומי'}</td><td><b>₪${t.amount.toLocaleString()}</b></td></tr>`;
               }).join('')}
               <tr style="background:#eff6ff; font-weight:bold; border-top:2px solid #2563eb;">
                 <td colspan="4"><b>סה"כ מצטבר משתנות ורכב (ללא שונות)</b></td>
@@ -1918,6 +1930,55 @@
       });
     }
 
+    // תכונה 1: מייצר אוטומטית עסקאות המשך לחודשים הבאים במידה ומדובר בעסקת תשלומים
+    function generateInstallmentSeries(baseTx) {
+      if (!baseTx.installmentTotal || baseTx.installmentTotal <= 1) return;
+
+      const parsed = parseTxDate(baseTx.date);
+      let startDay = parsed ? parsed.day : 2;
+      let startMonth = parsed ? parsed.month : appState.selectedMonth;
+      let startYear = parsed ? parsed.year : appState.selectedYear;
+      let currentInstNum = baseTx.installmentCurrent || 1;
+
+      for (let i = currentInstNum + 1; i <= baseTx.installmentTotal; i++) {
+        let futMonth = startMonth + (i - currentInstNum);
+        let futYear = startYear;
+        while (futMonth > 12) {
+          futMonth -= 12;
+          futYear += 1;
+        }
+
+        const futMonthKey = `${futYear}-${String(futMonth).padStart(2, '0')}`;
+        const futDateStr = `${String(startDay).padStart(2, '0')}/${String(futMonth).padStart(2, '0')}/${futYear}`;
+
+        const exists = appState.transactions.some(t => 
+          t.merchant === baseTx.merchant && 
+          t.amount === baseTx.amount && 
+          t.installmentCurrent === i && 
+          t.installmentTotal === baseTx.installmentTotal && 
+          t.monthKey === futMonthKey
+        );
+
+        if (!exists) {
+          appState.transactions.push({
+            id: Date.now() + Math.random(),
+            envId: baseTx.envId,
+            envelopeId: baseTx.envelopeId,
+            merchant: baseTx.merchant,
+            category: baseTx.category,
+            amount: baseTx.amount,
+            date: futDateStr,
+            monthKey: futMonthKey,
+            isPepper: baseTx.isPepper,
+            source: baseTx.source,
+            installmentCurrent: i,
+            installmentTotal: baseTx.installmentTotal,
+            note: baseTx.note || ''
+          });
+        }
+      }
+    }
+
     function processExcelSmart() {
       const fileInput = document.getElementById('excelFile');
       if (!fileInput.files.length) return alert('אנא בחר קובץ אקסל');
@@ -1981,14 +2042,19 @@
 
               let amtNum = !isNaN(chargeAmtNum) && chargeAmtNum > 0 ? chargeAmtNum : origAmtNum;
 
+              let instCurrent = 1;
+              let instTotal = 1;
+
               const fullRowStr = row.join(' ');
               if (fullRowStr.includes('תשלום') || merchantVal.includes('מתוך') || categoryVal.includes('תשלומים')) {
                 const match = fullRowStr.match(/(\d+)\s*(?:מתוך|\/)\s*(\d+)/);
-                if (match && match[2]) {
-                  const totalInstallments = parseInt(match[2]);
-                  if (totalInstallments > 1 && !isNaN(origAmtNum) && origAmtNum > 0) {
-                    if (amtNum === origAmtNum || amtNum > (origAmtNum / totalInstallments + 5)) {
-                      amtNum = Math.round((origAmtNum / totalInstallments) * 100) / 100;
+                if (match) {
+                  instCurrent = parseInt(match[1]) || 1;
+                  instTotal = parseInt(match[2]) || 1;
+
+                  if (instTotal > 1 && !isNaN(origAmtNum) && origAmtNum > 0) {
+                    if (amtNum === origAmtNum || amtNum > (origAmtNum / instTotal + 5)) {
+                      amtNum = Math.round((origAmtNum / instTotal) * 100) / 100;
                     }
                   }
                 }
@@ -2061,7 +2127,10 @@
                     monthKey: txMonthKey,
                     isPepper: isMax,
                     source: isMax ? 'Pepper' : 'הבינלאומי',
-                    matchedFixedId: matchedFixedItem ? matchedFixedItem.id : null
+                    matchedFixedId: matchedFixedItem ? matchedFixedItem.id : null,
+                    installmentCurrent: instCurrent,
+                    installmentTotal: instTotal,
+                    note: ''
                   });
                 }
               }
@@ -2085,6 +2154,7 @@
 
       appState.pendingImportTxs.forEach((t, idx) => {
         const badgeHtml = t.isPepper ? `<span class="badge-pepper">Pepper</span>` : `<span class="badge-isra">הבינלאומי</span>`;
+        const instBadge = (t.installmentTotal && t.installmentTotal > 1) ? `<span class="badge-inst">💳 תשלום ${t.installmentCurrent}/${t.installmentTotal}</span>` : '';
         const matchedName = t.matchedFixedId ? (appState.generalFixedList.find(f => f.id === t.matchedFixedId)?.name || '') : '';
         const envId = t.envId || t.envelopeId;
 
@@ -2096,9 +2166,10 @@
           <div class="tx-item">
             <div style="flex:1;">
               <div style="font-weight:bold;">${t.merchant}</div>
-              <div style="font-size:11px; color:#64748b; display:flex; align-items:center; gap:6px; margin-top:2px;">
-                ${badgeHtml} <span>${t.date}</span>
+              <div style="font-size:11px; color:#64748b; display:flex; align-items:center; gap:6px; margin-top:2px; flex-wrap:wrap;">
+                ${badgeHtml} ${instBadge} <span>${t.date}</span>
               </div>
+              ${t.note ? `<div class="note-pill">💬 ${t.note}</div>` : ''}
             </div>
             <div style="display:flex; align-items:center; gap:6px;">
               <span style="font-weight:bold;">₪${t.amount.toLocaleString()}</span>
@@ -2107,6 +2178,7 @@
                 <option value="var_other" ${envId === 'var_other' ? 'selected' : ''}>שונות (חיסכון)</option>
                 <option value="fixed" ${envId.startsWith('fixed_matched_') || envId === 'fixed' ? 'selected' : ''}>📌 קבועות ${matchedName ? '(' + matchedName + ')' : ''}</option>
               </select>
+              <button class="btn-action" onclick="editPendingTxNote(${idx})" title="הערה">📝</button>
               <button class="btn-delete-item" onclick="removePendingTx(${idx})">🗑️</button>
             </div>
           </div>
@@ -2116,6 +2188,16 @@
       html += `<button class="btn-confirm-import" onclick="confirmImport()">✅ אישור והוספת עסקאות</button>`;
       document.getElementById('modalBody').innerHTML = html;
       document.getElementById('modal').style.display = 'flex';
+    }
+
+    function editPendingTxNote(idx) {
+      const t = appState.pendingImportTxs[idx];
+      if (!t) return;
+      const newNote = prompt('הזן הערה עבור העסקה:', t.note || '');
+      if (newNote !== null) {
+        t.note = newNote.trim();
+        renderPreviewModal();
+      }
     }
 
     function changePendingTxEnv(idx, newEnvId) {
@@ -2192,6 +2274,9 @@
           }
         } else {
           appState.transactions.push(t);
+          if (t.installmentTotal && t.installmentTotal > 1) {
+            generateInstallmentSeries(t);
+          }
         }
       });
 
@@ -2200,44 +2285,164 @@
       render();
     }
 
+    // תכונה 5: כניסה למעטפה ספציפית - מציג שימוש מתוך תקציב, קטגוריות וכפתור פאי
     function openEnvModal(envId) {
       appState.activeModalEnvId = envId;
-      const envName = (appState.envelopes.find(e => e.id === envId)?.name || (envId === 'var_other' ? 'שונות' : 'מעטפה'));
-      const allEnvTxs = appState.transactions.filter(t => (t.envId === envId || t.envelopeId === envId) && isTxInSelectedMonth(t));
+      appState.activeCategoryFilter = 'ALL';
 
-      document.getElementById('modalTitle').innerText = `פירוט מעטפת ${envName}`;
-      let html = `<div id="modalTxList"></div>`;
+      const envObj = appState.envelopes.find(e => e.id === envId);
+      const envName = envObj ? envObj.name : (envId === 'var_other' ? 'שונות' : 'מעטפה');
+      const budgetAmt = envObj ? envObj.budget : 0;
+
+      const monthTxs = appState.transactions.filter(t => (t.envId === envId || t.envelopeId === envId) && isTxInSelectedMonth(t));
+      const totalSpent = monthTxs.reduce((s, t) => s + t.amount, 0);
+
+      document.getElementById('modalTitle').innerText = `פירוט מעטפת - ${envName}`;
+
+      let html = `
+        <div style="background:#f8fafc; padding:12px; border-radius:14px; border:1px solid #e2e8f0; margin-bottom:12px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+            <span style="font-size:13px; font-weight:bold; color:#64748b;">שימוש מתוך התקציב:</span>
+            <span style="font-size:15px; font-weight:800; color:#0f172a;">
+              ₪${totalSpent.toLocaleString()} ${budgetAmt > 0 ? '/ ₪' + budgetAmt.toLocaleString() : ''}
+            </span>
+          </div>
+          ${budgetAmt > 0 ? `
+            <div class="progress-bg">
+              <div class="progress-bar ${totalSpent > budgetAmt ? 'over' : ''}" style="width:${Math.min(100, (totalSpent/budgetAmt)*100)}%"></div>
+            </div>
+            <div style="font-size:11px; font-weight:bold; color:${totalSpent > budgetAmt ? '#ef4444' : '#10b981'}; text-align:left;">
+              ${totalSpent > budgetAmt ? 'חריגה: ₪' + (totalSpent - budgetAmt).toLocaleString() : 'נשאר: ₪' + (budgetAmt - totalSpent).toLocaleString()}
+            </div>
+          ` : ''}
+        </div>
+
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+          <span style="font-size:12px; font-weight:bold; color:#64748b;">סינון לפי קטגוריה פנימית:</span>
+          <button class="btn-action" onclick="toggleEnvelopePieChart('${envId}')" style="background:#f3e8ff; color:#7e22ce; border-color:#c084fc;">📊 דיאגרמת עוגה</button>
+        </div>
+
+        <div id="envelopeCategoryPills" style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:12px;"></div>
+        
+        <div id="envelopePieContainer" style="display:none; height:220px; margin-bottom:14px; padding:10px; background:#fff; border-radius:12px; border:1px solid var(--border);">
+          <canvas id="envelopePieCanvas"></canvas>
+        </div>
+
+        <div id="modalTxList"></div>
+      `;
 
       document.getElementById('modalBody').innerHTML = html;
-      renderModalTxsList(allEnvTxs);
+      renderEnvelopeCategoryPills(monthTxs);
+      renderModalTxsList();
       document.getElementById('modal').style.display = 'flex';
     }
 
-    function renderModalTxsList(txs) {
+    function renderEnvelopeCategoryPills(allTxs) {
+      const pillsContainer = document.getElementById('envelopeCategoryPills');
+      if (!pillsContainer) return;
+
+      const categoriesSet = new Set();
+      allTxs.forEach(t => { if (t.category) categoriesSet.add(t.category); });
+
+      let html = `
+        <button class="cat-chip ${appState.activeCategoryFilter === 'ALL' ? 'active' : ''}" onclick="filterModalByCategory('ALL')">
+          הכל (${allTxs.length})
+        </button>
+      `;
+
+      categoriesSet.forEach(cat => {
+        const count = allTxs.filter(t => t.category === cat).length;
+        html += `
+          <button class="cat-chip ${appState.activeCategoryFilter === cat ? 'active' : ''}" onclick="filterModalByCategory('${cat}')">
+            ${cat} (${count})
+          </button>
+        `;
+      });
+
+      pillsContainer.innerHTML = html;
+    }
+
+    function filterModalByCategory(catName) {
+      appState.activeCategoryFilter = catName;
+      const envId = appState.activeModalEnvId;
+      const allTxs = appState.transactions.filter(t => (t.envId === envId || t.envelopeId === envId) && isTxInSelectedMonth(t));
+      
+      renderEnvelopeCategoryPills(allTxs);
+      renderModalTxsList();
+    }
+
+    function toggleEnvelopePieChart(envId) {
+      const container = document.getElementById('envelopePieContainer');
+      if (!container) return;
+
+      if (container.style.display === 'block') {
+        container.style.display = 'none';
+        if (appState.envelopeChartInstance) {
+          appState.envelopeChartInstance.destroy();
+          appState.envelopeChartInstance = null;
+        }
+      } else {
+        container.style.display = 'block';
+        const monthTxs = appState.transactions.filter(t => (t.envId === envId || t.envelopeId === envId) && isTxInSelectedMonth(t));
+        
+        const catTotals = {};
+        monthTxs.forEach(t => {
+          const cat = t.category || 'כללי';
+          catTotals[cat] = (catTotals[cat] || 0) + t.amount;
+        });
+
+        const ctx = document.getElementById('envelopePieCanvas').getContext('2d');
+        if (appState.envelopeChartInstance) appState.envelopeChartInstance.destroy();
+
+        appState.envelopeChartInstance = new Chart(ctx, {
+          type: 'pie',
+          data: {
+            labels: Object.keys(catTotals),
+            datasets: [{
+              data: Object.values(catTotals),
+              backgroundColor: ['#2563eb', '#ff007f', '#10b981', '#f59e0b', '#8b5cf6', '#06b6d4', '#ec4899', '#6366f1']
+            }]
+          },
+          options: { responsive: true, maintainAspectRatio: false }
+        });
+      }
+    }
+
+    function renderModalTxsList() {
       const container = document.getElementById('modalTxList');
       if (!container) return;
 
+      const envId = appState.activeModalEnvId;
+      let txs = appState.transactions.filter(t => (t.envId === envId || t.envelopeId === envId) && isTxInSelectedMonth(t));
+
+      if (appState.activeCategoryFilter !== 'ALL') {
+        txs = txs.filter(t => t.category === appState.activeCategoryFilter);
+      }
+
       if (txs.length === 0) {
-        container.innerHTML = `<div style="text-align:center; color:#94a3b8; padding:20px;">אין עסקאות במעטפת זו בחודש זה</div>`;
+        container.innerHTML = `<div style="text-align:center; color:#94a3b8; padding:20px;">אין עסקאות להצגה בקטגוריה זו</div>`;
         return;
       }
 
       let html = '';
       txs.forEach(t => {
         const badgeHtml = t.isPepper ? `<span class="badge-pepper">Pepper</span>` : `<span class="badge-isra">הבינלאומי</span>`;
+        const instBadge = (t.installmentTotal && t.installmentTotal > 1) ? `<span class="badge-inst">💳 תשלום ${t.installmentCurrent}/${t.installmentTotal}</span>` : '';
 
         html += `
           <div class="tx-item">
             <div style="flex:1;">
               <div style="font-weight:bold;">${t.merchant}</div>
-              <div style="font-size:11px; color:#64748b; display:flex; align-items:center; gap:6px; margin-top:2px;">
-                ${badgeHtml} <span>${t.date}</span>
+              <div style="font-size:11px; color:#64748b; display:flex; align-items:center; gap:6px; margin-top:2px; flex-wrap:wrap;">
+                ${badgeHtml} ${instBadge} <span>${t.date}</span>
               </div>
+              ${t.note ? `<div class="note-pill">💬 ${t.note}</div>` : ''}
             </div>
             <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
               <span style="font-weight:bold;">₪${t.amount.toLocaleString()}</span>
               <button class="btn-action" onclick="editTxAmount('${t.id}')">✏️ סכום</button>
-              <button class="btn-action" onclick="editTxCategory('${t.id}')">🏷️ ${t.category || 'כללי'}</button>
+              <button class="btn-action" onclick="openCategoryEditModal('${t.id}')">🏷️ ${t.category || 'כללי'}</button>
+              <button class="btn-action" onclick="editTxNote('${t.id}')">📝 הערה</button>
               <button class="btn-action" onclick="moveTxEnvelopePrompt('${t.id}')">⇄ מעטפה</button>
               <button class="btn-delete-item" onclick="deleteTx('${t.id}')">🗑️</button>
             </div>
@@ -2245,6 +2450,73 @@
         `;
       });
       container.innerHTML = html;
+    }
+
+    // תכונה 2: הוספה ועריכת הערה לכל שורת עסקה
+    function editTxNote(txId) {
+      const t = appState.transactions.find(x => x.id == txId);
+      if (!t) return;
+
+      const currentNote = t.note || '';
+      const newNote = prompt(`הוסף/ערוך הערה עבור העסקה "${t.merchant}":`, currentNote);
+
+      if (newNote !== null) {
+        t.note = newNote.trim();
+        render();
+        if (appState.activeModalEnvId) {
+          const allTxs = appState.transactions.filter(x => (x.envId === appState.activeModalEnvId || x.envelopeId === appState.activeModalEnvId) && isTxInSelectedMonth(x));
+          renderEnvelopeCategoryPills(allTxs);
+          renderModalTxsList();
+        }
+      }
+    }
+
+    // תכונה 3: שינוי קטגוריה פנימית במלל חופשי או ברשימה נפתחת
+    function openCategoryEditModal(txId) {
+      const t = appState.transactions.find(x => x.id == txId);
+      if (!t) return;
+
+      const existingCategories = Array.from(new Set(appState.transactions.map(x => x.category).filter(Boolean)));
+      if (!existingCategories.includes('אוכל וסופר')) existingCategories.push('אוכל וסופר');
+      if (!existingCategories.includes('מסעדות וקפה')) existingCategories.push('מסעדות וקפה');
+      if (!existingCategories.includes('דלק ותחבורה')) existingCategories.push('דלק ותחבורה');
+      if (!existingCategories.includes('פארם ורפואה')) existingCategories.push('פארם ורפואה');
+      if (!existingCategories.includes('ביגוד והנעלה')) existingCategories.push('ביגוד והנעלה');
+
+      let optionsHtml = existingCategories.map(cat => `
+        <option value="${cat}" ${t.category === cat ? 'selected' : ''}>${cat}</option>
+      `).join('');
+
+      document.getElementById('modalTitle').innerText = `🏷️ שינוי קטגוריה פנימית - ${t.merchant}`;
+      document.getElementById('modalBody').innerHTML = `
+        <div style="margin-bottom:14px;">
+          <label style="font-size:13px; font-weight:bold; color:#64748b; display:block; margin-bottom:6px;">בחר מרשימת הקטגוריות הקיימות:</label>
+          <select id="categorySelectDropdown" class="search-input" style="font-weight:bold;">
+            ${optionsHtml}
+          </select>
+        </div>
+        <div style="margin-bottom:16px;">
+          <label style="font-size:13px; font-weight:bold; color:#64748b; display:block; margin-bottom:6px;">או הקלד קטגוריה חדשה במלל חופשי:</label>
+          <input type="text" id="categoryFreeTextInput" class="search-input" placeholder="הכנס שם קטגוריה חדשה..." value="${t.category || ''}">
+        </div>
+        <button onclick="saveCategoryEdit('${t.id}')" style="width:100%; padding:12px; background:var(--primary); color:#fff; border:none; border-radius:10px; font-weight:bold; cursor:pointer;">✓ שמור קטגוריה</button>
+      `;
+
+      document.getElementById('modal').style.display = 'flex';
+    }
+
+    function saveCategoryEdit(txId) {
+      const t = appState.transactions.find(x => x.id == txId);
+      if (!t) return;
+
+      const freeText = document.getElementById('categoryFreeTextInput').value.trim();
+      const dropdownVal = document.getElementById('categorySelectDropdown').value;
+
+      t.category = freeText || dropdownVal || 'כללי';
+
+      closeModal();
+      render();
+      if (appState.activeModalEnvId) openEnvModal(appState.activeModalEnvId);
     }
 
     function editTxAmount(txId) {
@@ -2260,17 +2532,6 @@
         } else {
           alert('אנא הזן סכום תקין.');
         }
-      }
-    }
-
-    function editTxCategory(txId) {
-      const t = appState.transactions.find(x => x.id == txId);
-      if (!t) return;
-      const newCat = prompt('ערוך שם קטגוריה:', t.category || 'כללי');
-      if (newCat !== null) {
-        t.category = newCat.trim();
-        render();
-        openEnvModal(appState.activeModalEnvId);
       }
     }
 
@@ -2370,7 +2631,7 @@
       if (confirm('האם למחוק עסקה זו?')) {
         appState.transactions = appState.transactions.filter(x => x.id != txId);
         render();
-        openEnvModal(appState.activeModalEnvId);
+        if (appState.activeModalEnvId) openEnvModal(appState.activeModalEnvId);
       }
     }
 
@@ -2596,13 +2857,43 @@
       openSavingsModal();
     }
 
+    // תכונה 4: לחצן "צפי/בדיקה" מאפשר לבחור לאיזו מעטפה להוסיף את ההוצאה
     function addForecastTxGlobal() {
-      const merchant = prompt('שם ההוצאה הצפויה / בדיקה:');
-      if (!merchant) return;
-      const amount = parseFloat(prompt('סכום צפוי בש"ח:'));
-      if (!amount) return;
+      document.getElementById('modalTitle').innerText = "+ הוספת הוצאה צפויה / בדיקה";
 
-      const envId = appState.envelopes[0] ? appState.envelopes[0].id : 'var_general';
+      let envOptionsHtml = appState.envelopes.map(e => `
+        <option value="${e.id}">${e.name}</option>
+      `).join('');
+
+      document.getElementById('modalBody').innerHTML = `
+        <div style="margin-bottom:12px;">
+          <label style="font-size:13px; font-weight:bold; color:#64748b; display:block; margin-bottom:6px;">תיאור ההוצאה / בדיקה:</label>
+          <input type="text" id="forecastMerchantInput" class="search-input" placeholder="למשל: קניות לשבת, תיקון רכב">
+        </div>
+        <div style="margin-bottom:12px;">
+          <label style="font-size:13px; font-weight:bold; color:#64748b; display:block; margin-bottom:6px;">סכום צפוי (בש"ח):</label>
+          <input type="number" id="forecastAmountInput" class="search-input" placeholder="למשל: 350">
+        </div>
+        <div style="margin-bottom:16px;">
+          <label style="font-size:13px; font-weight:bold; color:#64748b; display:block; margin-bottom:6px;">בחר מעטפה יעד:</label>
+          <select id="forecastEnvelopeSelect" class="search-input" style="font-weight:bold;">
+            ${envOptionsHtml}
+            <option value="var_other">📁 שונות (חיובים מחיסכון)</option>
+          </select>
+        </div>
+        <button onclick="submitForecastTxGlobal()" style="width:100%; padding:12px; background:var(--warning); color:#fff; border:none; border-radius:10px; font-weight:bold; cursor:pointer;">✓ אישור והוספת צפי למעטפה</button>
+      `;
+
+      document.getElementById('modal').style.display = 'flex';
+    }
+
+    function submitForecastTxGlobal() {
+      const merchant = document.getElementById('forecastMerchantInput').value.trim();
+      const amount = parseFloat(document.getElementById('forecastAmountInput').value);
+      const envId = document.getElementById('forecastEnvelopeSelect').value;
+
+      if (!merchant) return alert('אנא הזן תיאור להוצאה.');
+      if (isNaN(amount) || amount <= 0) return alert('אנא הזן סכום תקין.');
 
       appState.transactions.push({
         id: Date.now(),
@@ -2612,11 +2903,13 @@
         amount: amount,
         date: 'צפי חודשי',
         monthKey: getCurrentMonthKey(),
-        category: 'בדיקה/צפי'
+        category: 'בדיקה/צפי',
+        note: ''
       });
 
+      closeModal();
       render();
-      alert('ההוצאה הצפויה הוספה בהצלחה למשתנות!');
+      alert('ההוצאה הצפויה הוספה בהצלחה למעטפה שנבחרה!');
     }
 
     function openOverallPieModal() {
@@ -2684,6 +2977,7 @@
     function closeModal() { 
       document.getElementById('modal').style.display = 'none'; 
       if (appState.chartInstance) { appState.chartInstance.destroy(); appState.chartInstance = null; }
+      if (appState.envelopeChartInstance) { appState.envelopeChartInstance.destroy(); appState.envelopeChartInstance = null; }
     }
 
     // Attach to Window Scope
@@ -2722,8 +3016,13 @@
     window.removePendingTx = removePendingTx;
     window.confirmImport = confirmImport;
     window.openEnvModal = openEnvModal;
+    window.filterModalByCategory = filterModalByCategory;
+    window.toggleEnvelopePieChart = toggleEnvelopePieChart;
     window.editTxAmount = editTxAmount;
-    window.editTxCategory = editTxCategory;
+    window.editTxNote = editTxNote;
+    window.editPendingTxNote = editPendingTxNote;
+    window.openCategoryEditModal = openCategoryEditModal;
+    window.saveCategoryEdit = saveCategoryEdit;
     window.moveTxEnvelopePrompt = moveTxEnvelopePrompt;
     window.executeMoveTxToEnv = executeMoveTxToEnv;
     window.assignTxToFixedModal = assignTxToFixedModal;
@@ -2742,6 +3041,7 @@
     window.toggleSavingsStatus = toggleSavingsStatus;
     window.addSavingsPrompt = addSavingsPrompt;
     window.addForecastTxGlobal = addForecastTxGlobal;
+    window.submitForecastTxGlobal = submitForecastTxGlobal;
     window.openOverallPieModal = openOverallPieModal;
     window.openImportModal = openImportModal;
     window.closeModal = closeModal;

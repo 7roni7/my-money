@@ -214,6 +214,25 @@
 
     .fixed-item-box { display: flex; justify-content: space-between; align-items: center; padding: 12px; border-radius: 12px; border: 1px solid var(--border); margin-bottom: 8px; background: #f8fafc; color: #94a3b8; transition: all 0.2s; }
     .fixed-item-box.confirmed { background: #f0fdf4; border-color: #bbf7d0; color: #166534; font-weight: bold; }
+    .fixed-item-box.bimonthly-disabled { background: #fafaf9; border: 1.5px dashed #cbd5e1; color: #94a3b8; }
+
+    .badge-bimonthly-btn {
+      font-size: 11px;
+      font-weight: bold;
+      padding: 3px 8px;
+      border-radius: 8px;
+      border: 1px solid transparent;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      margin-top: 4px;
+      transition: all 0.2s;
+    }
+    .badge-bimonthly-btn.yellow { background: #fef3c7; color: #92400e; border-color: #fcd34d; }
+    .badge-bimonthly-btn.yellow:hover { background: #fde68a; }
+    .badge-bimonthly-btn.orange { background: #ffedd5; color: #c2410c; border-color: #fdba74; }
+    .badge-bimonthly-btn.blue { background: #e0f2fe; color: #0369a1; border-color: #7dd3fc; }
 
     .income-item-box { display: flex; justify-content: space-between; align-items: center; padding: 12px; border-radius: 12px; border: 1px solid var(--border); margin-bottom: 8px; background: #f8fafc; transition: all 0.2s; }
     .income-item-box.received { background: #f0fdf4; border-color: #bbf7d0; color: #166534; font-weight: bold; }
@@ -725,7 +744,6 @@
       }
     }
 
-    // סריקת כל העסקאות בזיכרון והשלמת חיובי המשך אם חסרים
     function syncAllInstallmentSeries() {
       const snap = [...appState.transactions];
       snap.forEach(t => {
@@ -846,16 +864,40 @@
       document.getElementById('hoaStarNotice').style.display = (isFiveDaysBefore && hoaDebtInfo.debtAmount >= 600) ? 'inline' : 'none';
     }
 
-    function getGeneralFixedMonthlyDetails(item) {
-      const currentMonthKey = getCurrentMonthKey();
-      const currentMonthNum = appState.selectedMonth;
-      const isDue = !item.isBimonthly || (item.dueMonths && item.dueMonths.includes(currentMonthNum));
-      const mData = (item.monthlyData && item.monthlyData[currentMonthKey]) || null;
+    // חישוב מפורט לקבועות באשראי כולל מנגנון החרגה, חוב ישן והעברה לחודש הבא
+    function getGeneralFixedMonthlyDetails(item, year = appState.selectedYear, month = appState.selectedMonth) {
+      const monthKey = `${year}-${String(month).padStart(2, '0')}`;
+      const mData = (item.monthlyData && item.monthlyData[monthKey]) || null;
       
+      let defaultIsDue = !item.isBimonthly || (item.dueMonths && item.dueMonths.includes(month));
+      let isDue = defaultIsDue;
+      
+      // בדיקה אם בחודש הקודם סומן "תשלום חוב ישן" המצריך חיוב גם בחודש זה
+      let prevMonth = month - 1;
+      let prevYear = year;
+      if (prevMonth < 1) { prevMonth = 12; prevYear--; }
+      const prevMonthKey = `${prevYear}-${String(prevMonth).padStart(2, '0')}`;
+      const prevMData = (item.monthlyData && item.monthlyData[prevMonthKey]) || null;
+      if (prevMData && prevMData.isOldDebt) {
+        isDue = true;
+      }
+
+      if (mData && mData.overrideDue !== undefined && mData.overrideDue !== null) {
+        isDue = mData.overrideDue;
+      }
+
+      const amount = isDue ? (mData && mData.amount !== undefined ? mData.amount : item.defaultAmount) : 0;
+      const isConfirmed = mData ? !!mData.isConfirmed : false;
+      const isOldDebt = mData ? !!mData.isOldDebt : false;
+      const hasOverride = mData && mData.overrideDue !== undefined;
+
       return {
-        amount: isDue ? (mData ? mData.amount : item.defaultAmount) : 0,
-        isConfirmed: mData ? mData.isConfirmed : false,
-        isDue: isDue
+        amount: amount,
+        isConfirmed: isConfirmed,
+        isDue: isDue,
+        defaultIsDue: defaultIsDue,
+        isOldDebt: isOldDebt,
+        hasOverride: hasOverride
       };
     }
 
@@ -1264,8 +1306,15 @@
           totalGeneralFixed += d.amount;
           fixedRowsHtml += `
             <div class="net-breakdown-row">
-              <span>🔹 ${item.name}</span>
+              <span>🔹 ${item.name} ${d.isOldDebt ? '<span style="color:#c2410c; font-size:11px;">(📜 חוב ישן)</span>' : ''}</span>
               <span style="font-weight:bold; color:#991b1b;">-₪${d.amount.toLocaleString()}</span>
+            </div>
+          `;
+        } else if (item.isBimonthly) {
+          fixedRowsHtml += `
+            <div class="net-breakdown-row" style="opacity:0.65;">
+              <span>🔹 ${item.name} <span style="color:#92400e; font-size:11px;">(⚠️ לא אמורה לצאת חשבונית)</span></span>
+              <span style="font-weight:bold; color:#64748b; text-decoration:line-through;">-₪0</span>
             </div>
           `;
         }
@@ -1768,7 +1817,8 @@
       appState.generalFixedList.forEach(item => {
         const d = getGeneralFixedMonthlyDetails(item);
         if (d.isDue) {
-          sheet3Data.push([item.name, "קבועה באשראי", d.amount, item.bank === 'Pepper' ? 'Pepper' : 'הבינלאומי', d.isConfirmed ? '✓ נקלט באשראי' : '⏳ ממתין']);
+          const nameWithNote = item.name + (d.isOldDebt ? ' (חוב ישן)' : '');
+          sheet3Data.push([nameWithNote, "קבועה באשראי", d.amount, item.bank === 'Pepper' ? 'Pepper' : 'הבינלאומי', d.isConfirmed ? '✓ נקלט באשראי' : '⏳ ממתין']);
           runningFixedTotal += d.amount;
         }
       });
@@ -1924,7 +1974,7 @@
               ${appState.generalFixedList.map(item => {
                 const d = getGeneralFixedMonthlyDetails(item);
                 if (!d.isDue) return '';
-                return `<tr><td>${item.name}</td><td>קבועה באשראי</td><td>${item.bank === 'Pepper' ? 'Pepper' : 'הבינלאומי'}</td><td><b>₪${d.amount.toLocaleString()}</b></td></tr>`;
+                return `<tr><td>${item.name}${d.isOldDebt ? ' (📜 חוב ישן)' : ''}</td><td>קבועה באשראי</td><td>${item.bank === 'Pepper' ? 'Pepper' : 'הבינלאומי'}</td><td><b>₪${d.amount.toLocaleString()}</b></td></tr>`;
               }).join('')}
               ${appState.directDebits.map(dd => {
                 const mData = dd.monthlyData[currentMonthKey] || { amount: dd.defaultAmount };
@@ -2277,7 +2327,11 @@
             const fixedItem = appState.generalFixedList.find(f => f.id === t.matchedFixedId);
             if (fixedItem) {
               if (!fixedItem.monthlyData) fixedItem.monthlyData = {};
-              fixedItem.monthlyData[currentMonthKey] = { isConfirmed: true, amount: t.amount };
+              const currentM = fixedItem.monthlyData[currentMonthKey] || { amount: fixedItem.defaultAmount };
+              currentM.isConfirmed = true;
+              currentM.amount = t.amount;
+              currentM.overrideDue = true;
+              fixedItem.monthlyData[currentMonthKey] = currentM;
             }
           }
         } else {
@@ -2436,7 +2490,6 @@
         txs = txs.filter(t => t.category === appState.activeCategoryFilter);
       }
 
-      // מיון: הכי אחרון (הגבוה ביותר בתאריך) יופיע בראש הרשימה, והקודם ביותר בתחתית
       txs.sort((a, b) => {
         const valA = getTxSortValue(a);
         const valB = getTxSortValue(b);
@@ -2635,7 +2688,7 @@
       if (t && fixedItem) {
         const currentMonthKey = getCurrentMonthKey();
         if (!fixedItem.monthlyData) fixedItem.monthlyData = {};
-        fixedItem.monthlyData[currentMonthKey] = { isConfirmed: true, amount: t.amount };
+        fixedItem.monthlyData[currentMonthKey] = { isConfirmed: true, amount: t.amount, overrideDue: true };
 
         appState.transactions = appState.transactions.filter(x => x.id != txId);
         
@@ -2672,7 +2725,41 @@
 
       appState.generalFixedList.forEach((item, idx) => {
         const details = getGeneralFixedMonthlyDetails(item);
-        if (details.isDue) {
+
+        if (item.isBimonthly) {
+          let badgeClass = details.isDue ? (details.isOldDebt ? 'orange' : 'blue') : 'yellow';
+          let badgeText = '📄 אמורה לצאת חשבונית';
+          if (!details.isDue) {
+            badgeText = '⚠️ לא אמורה לצאת חשבונית';
+          } else if (details.isOldDebt) {
+            badgeText = '📜 תשלום חוב (תצא חשבונית בחודש הבא)';
+          } else if (details.hasOverride && details.overrideDue) {
+            badgeText = '📄 ידני: אמורה לצאת חשבונית';
+          }
+
+          html += `
+            <div class="fixed-item-box ${!details.isDue ? 'bimonthly-disabled' : (details.isConfirmed ? 'confirmed' : '')}">
+              <div>
+                <div style="font-weight:bold;">${item.name}</div>
+                <div style="font-size:11px; color:#64748b; margin-top:2px;">
+                  בנק: ${item.bank === 'Pepper' ? 'Pepper' : 'הבינלאומי'}
+                </div>
+                <div>
+                  <button onclick="openBimonthlyOptionsModal(${idx}, event)" class="badge-bimonthly-btn ${badgeClass}">
+                    ${badgeText} ▾
+                  </button>
+                </div>
+              </div>
+              <div style="display:flex; align-items:center; gap:8px;">
+                <span style="font-weight:bold; color:${!details.isDue ? '#94a3b8' : 'inherit'};">
+                  ${details.isDue ? '₪' + details.amount.toLocaleString() : '₪0'}
+                </span>
+                ${details.isDue ? `<button class="btn-action" onclick="toggleFixedConfirmState(${idx})" title="שנה סטטוס">⇄</button>` : ''}
+                <button class="btn-action" onclick="editGeneralFixedAmount(${idx})" title="ערוך סכום">✏️</button>
+              </div>
+            </div>
+          `;
+        } else if (details.isDue) {
           html += `
             <div class="fixed-item-box ${details.isConfirmed ? 'confirmed' : ''}">
               <div>
@@ -2691,6 +2778,100 @@
 
       document.getElementById('modalBody').innerHTML = html;
       document.getElementById('modal').style.display = 'flex';
+    }
+
+    function openBimonthlyOptionsModal(idx, event) {
+      if (event) event.stopPropagation();
+      const item = appState.generalFixedList[idx];
+      if (!item) return;
+
+      const monthName = MONTH_NAMES[appState.selectedMonth - 1];
+      const monthYearStr = `${monthName} ${appState.selectedYear}`;
+      const details = getGeneralFixedMonthlyDetails(item);
+
+      document.getElementById('modalTitle').innerText = `⚙️ הגדרת חשבונית - ${item.name}`;
+
+      let html = `
+        <div style="background:#f8fafc; padding:12px; border-radius:12px; border:1px solid #e2e8f0; margin-bottom:14px;">
+          <div style="font-size:13px; font-weight:bold; color:#0f172a;">${item.name} (${monthYearStr})</div>
+          <div style="font-size:12px; color:#64748b; margin-top:4px;">
+            סכום ברירת מחדל: <b>₪${item.defaultAmount.toLocaleString()}</b> • מחזור חיוב: <b>דו-חודשי</b>
+          </div>
+        </div>
+
+        <div style="font-size:13px; font-weight:bold; color:#64748b; margin-bottom:10px;">בחר סטטוס חיוב לחודש זה:</div>
+
+        <div style="display:flex; flex-direction:column; gap:10px; margin-bottom:16px;">
+          <button onclick="setBimonthlyStatus('${item.id}', 'YES')" 
+            style="text-align:right; padding:12px; border-radius:12px; border:1.5px solid ${details.isDue && !details.isOldDebt && details.hasOverride ? '#2563eb' : '#cbd5e1'};
+            background:${details.isDue && !details.isOldDebt && details.hasOverride ? '#eff6ff' : '#fff'}; cursor:pointer;">
+            <div style="font-weight:bold; font-size:14px; color:#1e40af;">📄 אמורה לצאת חשבונית לחודש זה</div>
+            <div style="font-size:11px; color:#64748b; margin-top:2px;">החשבונית תיכלל בחישוב התקציב והסכום של חודש זה (₪${item.defaultAmount.toLocaleString()}).</div>
+          </button>
+
+          <button onclick="setBimonthlyStatus('${item.id}', 'NO')" 
+            style="text-align:right; padding:12px; border-radius:12px; border:1.5px solid ${!details.isDue ? '#f59e0b' : '#cbd5e1'};
+            background:${!details.isDue ? '#fef3c7' : '#fff'}; cursor:pointer;">
+            <div style="font-weight:bold; font-size:14px; color:#92400e;">⚠️ לא אמורה לצאת חשבונית לחודש זה</div>
+            <div style="font-size:11px; color:#64748b; margin-top:2px;">החשבונית תהיה מוחרגת ולא תיכלל בסך הקבועות במעטפה ובמאזן לחודש זה.</div>
+          </button>
+
+          <button onclick="setBimonthlyStatus('${item.id}', 'OLD_DEBT')" 
+            style="text-align:right; padding:12px; border-radius:12px; border:1.5px solid ${details.isOldDebt ? '#ea580c' : '#cbd5e1'};
+            background:${details.isOldDebt ? '#ffedd5' : '#fff'}; cursor:pointer;">
+            <div style="font-weight:bold; font-size:14px; color:#c2410c;">📜 מדובר בתשלום חוב ישן (וחודש הבא צריכה לצאת חשבונית)</div>
+            <div style="font-size:11px; color:#64748b; margin-top:2px;">תשלום זה ייכלל החודש, ובנוסף בחודש הבא תופיע אוטומטית חשבונית נוספת בחישוב הקבועות.</div>
+          </button>
+        </div>
+
+        <button onclick="resetBimonthlyStatus('${item.id}')" style="width:100%; padding:10px; background:#f1f5f9; color:#475569; border:1px solid #cbd5e1; border-radius:10px; font-weight:bold; cursor:pointer;">
+          🔄 אפס להגדרות לוח זמנים מחדל
+        </button>
+      `;
+
+      document.getElementById('modalBody').innerHTML = html;
+      document.getElementById('modal').style.display = 'flex';
+    }
+
+    function setBimonthlyStatus(itemId, status) {
+      const item = appState.generalFixedList.find(i => i.id === itemId);
+      if (!item) return;
+
+      const currentMonthKey = getCurrentMonthKey();
+      if (!item.monthlyData) item.monthlyData = {};
+      if (!item.monthlyData[currentMonthKey]) {
+        item.monthlyData[currentMonthKey] = { amount: item.defaultAmount, isConfirmed: false };
+      }
+
+      const mData = item.monthlyData[currentMonthKey];
+
+      if (status === 'YES') {
+        mData.overrideDue = true;
+        mData.isOldDebt = false;
+      } else if (status === 'NO') {
+        mData.overrideDue = false;
+        mData.isOldDebt = false;
+      } else if (status === 'OLD_DEBT') {
+        mData.overrideDue = true;
+        mData.isOldDebt = true;
+      }
+
+      render();
+      openGeneralFixedModal();
+    }
+
+    function resetBimonthlyStatus(itemId) {
+      const item = appState.generalFixedList.find(i => i.id === itemId);
+      if (!item) return;
+
+      const currentMonthKey = getCurrentMonthKey();
+      if (item.monthlyData && item.monthlyData[currentMonthKey]) {
+        delete item.monthlyData[currentMonthKey].overrideDue;
+        delete item.monthlyData[currentMonthKey].isOldDebt;
+      }
+
+      render();
+      openGeneralFixedModal();
     }
 
     function addNewGeneralFixedPrompt() {
@@ -3074,6 +3255,10 @@
     window.createNewFixedFromTx = createNewFixedFromTx;
     window.deleteTx = deleteTx;
     window.openGeneralFixedModal = openGeneralFixedModal;
+    window.getGeneralFixedMonthlyDetails = getGeneralFixedMonthlyDetails;
+    window.openBimonthlyOptionsModal = openBimonthlyOptionsModal;
+    window.setBimonthlyStatus = setBimonthlyStatus;
+    window.resetBimonthlyStatus = resetBimonthlyStatus;
     window.addNewGeneralFixedFromModal = addNewGeneralFixedFromModal;
     window.toggleFixedConfirmState = toggleFixedConfirmState;
     window.editGeneralFixedAmount = editGeneralFixedAmount;

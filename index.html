@@ -864,7 +864,6 @@
       document.getElementById('hoaStarNotice').style.display = (isFiveDaysBefore && hoaDebtInfo.debtAmount >= 600) ? 'inline' : 'none';
     }
 
-    // חישוב מפורט לקבועות באשראי כולל מנגנון החרגה, חוב ישן והעברה לחודש הבא
     function getGeneralFixedMonthlyDetails(item, year = appState.selectedYear, month = appState.selectedMonth) {
       const monthKey = `${year}-${String(month).padStart(2, '0')}`;
       const mData = (item.monthlyData && item.monthlyData[monthKey]) || null;
@@ -872,7 +871,6 @@
       let defaultIsDue = !item.isBimonthly || (item.dueMonths && item.dueMonths.includes(month));
       let isDue = defaultIsDue;
       
-      // בדיקה אם בחודש הקודם סומן "תשלום חוב ישן" המצריך חיוב גם בחודש זה
       let prevMonth = month - 1;
       let prevYear = year;
       if (prevMonth < 1) { prevMonth = 12; prevYear--; }
@@ -1745,7 +1743,18 @@
       const incomes = getCalculatedIncomes();
 
       const currentMonthTxs = appState.transactions.filter(t => isTxInSelectedMonth(t));
-      const totalSpentVar = currentMonthTxs.filter(t => t.envId !== 'var_other' && t.envelopeId !== 'var_other').reduce((sum, t) => sum + t.amount, 0);
+      
+      // פיצול עסקאות: בלת"מים לעומת משתנות רגילות
+      const unplannedTxs = currentMonthTxs.filter(t => (t.envId === 'var_unplanned' || t.envelopeId === 'var_unplanned'));
+      const totalSpentUnplanned = unplannedTxs.reduce((sum, t) => sum + t.amount, 0);
+
+      const regularVarTxs = currentMonthTxs.filter(t => {
+        const e = t.envId || t.envelopeId;
+        return e !== 'var_unplanned' && e !== 'var_other';
+      });
+      const totalSpentRegularVar = regularVarTxs.reduce((sum, t) => sum + t.amount, 0);
+
+      const totalSpentVar = totalSpentRegularVar + totalSpentUnplanned;
 
       let totalGeneralFixed = 0;
       appState.generalFixedList.forEach(item => {
@@ -1764,12 +1773,14 @@
       const totalExpenses = totalSpentVar + totalGeneralFixed + totalDirectDebits + totalCash;
       const netResultActual = incomes.confirmedIncome - totalExpenses;
 
+      // גליון 1: סיכום ומאזן
       const summaryData = [
         ["דוח ריכז תקציב ומאזן חודשי", "", monthYearStr],
         [],
         ["תחום / קטגוריה", "סכום כולל (ש\"ח)", "הערות / סטטוס"],
         ["הכנסות שאושר שהתקבלו בפועל", incomes.confirmedIncome, `צפי מתוכנן מלא: ₪${incomes.projectedIncome.toLocaleString()}`],
-        ["מעטפות משתנות ורכב (ללא שונות)", totalSpentVar, "משתנות, בלת\"מים ודלק"],
+        ["מעטפות משתנות ורכב (שוטף)", totalSpentRegularVar, "משתנות, רכב ודלק (ללא בלת\"מים)"],
+        ["מעטפת בלת\"מים", totalSpentUnplanned, "הוצאות בלתי מתוכננות (תקציב: ₪4,300)"],
         ["מעטפת קבועות באשראי", totalGeneralFixed, "תקשורת, ארנונה, חשמל וביטוחים"],
         ["הוראות קבע בעו\"ש", totalDirectDebits, "משכנתא וגן של בניה"],
         ["משיכות מזומן", totalCash, "בייביסיטר, אירועים ועמלות"],
@@ -1782,31 +1793,55 @@
       setupRTLSheet(wsSummary, [32, 20, 35]);
       XLSX.utils.book_append_sheet(wb, wsSummary, "סיכום ומאזן");
 
+      // גליון 2: משתנות ורכב (שוטף)
       const sheet2Data = [
-        ["פירוט עסקאות - מעטפות משתנות ורכב", "", "", "", "", monthYearStr],
+        ["פירוט עסקאות - מעטפות משתנות ורכב (שוטף)", "", "", "", "", monthYearStr],
         [],
         ["בית עסק", "מעטפת / קטגוריה", "סכום (ש\"ח)", "תאריך", "בנק", "תשלומים / הערה"]
       ];
 
-      let runningVarTotal = 0;
-      currentMonthTxs.forEach(t => {
+      regularVarTxs.forEach(t => {
         const envId = t.envId || t.envelopeId;
         const envObj = appState.envelopes.find(e => e.id === envId);
-        const envName = envObj ? envObj.name : (envId === 'var_other' ? 'שונות (חיסכון - מוחרג)' : 'משתנות');
+        const envName = envObj ? envObj.name : 'משתנות';
         const instText = (t.installmentTotal && t.installmentTotal > 1) ? `תשלום ${t.installmentCurrent}/${t.installmentTotal}` : '';
         const notesText = [instText, t.note].filter(Boolean).join(' | ');
 
         sheet2Data.push([t.merchant, envName, t.amount, t.date || '', t.isPepper ? 'Pepper' : 'הבינלאומי', notesText]);
-        if (envId !== 'var_other') runningVarTotal += t.amount;
       });
 
       sheet2Data.push([]);
-      sheet2Data.push(["סה\"כ מצטבר משתנות ורכב (ללא שונות)", "", runningVarTotal, "", "", ""]);
+      sheet2Data.push(["סה\"כ מצטבר משתנות ורכב", "", totalSpentRegularVar, "", "", ""]);
 
       const wsVar = XLSX.utils.aoa_to_sheet(sheet2Data);
       setupRTLSheet(wsVar, [32, 22, 18, 16, 16, 25]);
       XLSX.utils.book_append_sheet(wb, wsVar, "משתנות ורכב");
 
+      // גליון 3: בלת"מים (חדש!)
+      const sheetUnplannedData = [
+        ["פירוט עסקאות - מעטפת בלת\"מים (בלתי מתוכנן)", "", "", "", "", monthYearStr],
+        [],
+        ["בית עסק", "קטגוריה / הערה", "סכום (ש\"ח)", "תאריך", "בנק", "תשלומים / הערה"]
+      ];
+
+      if (unplannedTxs.length === 0) {
+        sheetUnplannedData.push(["אין עסקאות בלת\"מים בחודש זה", "-", 0, "-", "-", "-"]);
+      } else {
+        unplannedTxs.forEach(t => {
+          const instText = (t.installmentTotal && t.installmentTotal > 1) ? `תשלום ${t.installmentCurrent}/${t.installmentTotal}` : '';
+          const notesText = [instText, t.note].filter(Boolean).join(' | ');
+          sheetUnplannedData.push([t.merchant, t.category || 'בלת"ם', t.amount, t.date || '', t.isPepper ? 'Pepper' : 'הבינלאומי', notesText]);
+        });
+      }
+
+      sheetUnplannedData.push([]);
+      sheetUnplannedData.push(["סה\"כ מצטבר בלת\"מים (תקציב: ₪4,300)", "", totalSpentUnplanned, "", "", ""]);
+
+      const wsUnplanned = XLSX.utils.aoa_to_sheet(sheetUnplannedData);
+      setupRTLSheet(wsUnplanned, [32, 22, 18, 16, 16, 25]);
+      XLSX.utils.book_append_sheet(wb, wsUnplanned, "בלת\"מים");
+
+      // גליון 4: קבועות והוראות קבע
       const sheet3Data = [
         ["פירוט קבועות מאשראי והוראות קבע בעו\"ש", "", "", "", monthYearStr],
         [],
@@ -1836,6 +1871,7 @@
       setupRTLSheet(wsFixed, [32, 20, 18, 16, 20]);
       XLSX.utils.book_append_sheet(wb, wsFixed, "קבועות והוראות קבע");
 
+      // גליון 5: הכנסות
       const sheet4Data = [
         ["פירוט הכנסות בלבד", "", "", monthYearStr],
         [],
@@ -1856,6 +1892,7 @@
       setupRTLSheet(wsInc, [30, 18, 18, 25]);
       XLSX.utils.book_append_sheet(wb, wsInc, "הכנסות");
 
+      // גליון 6: משיכות מזומן
       const sheet5Data = [
         ["פירוט משיכות מזומן", "", "", monthYearStr],
         [],
@@ -1892,7 +1929,17 @@
       const incomes = getCalculatedIncomes();
 
       const currentMonthTxs = appState.transactions.filter(t => isTxInSelectedMonth(t));
-      const totalSpentVar = currentMonthTxs.filter(t => t.envId !== 'var_other' && t.envelopeId !== 'var_other').reduce((sum, t) => sum + t.amount, 0);
+      
+      const unplannedTxs = currentMonthTxs.filter(t => (t.envId === 'var_unplanned' || t.envelopeId === 'var_unplanned'));
+      const totalSpentUnplanned = unplannedTxs.reduce((sum, t) => sum + t.amount, 0);
+
+      const regularVarTxs = currentMonthTxs.filter(t => {
+        const e = t.envId || t.envelopeId;
+        return e !== 'var_unplanned' && e !== 'var_other';
+      });
+      const totalSpentRegularVar = regularVarTxs.reduce((sum, t) => sum + t.amount, 0);
+
+      const totalSpentVar = totalSpentRegularVar + totalSpentUnplanned;
 
       let totalGeneralFixed = 0;
       appState.generalFixedList.forEach(item => {
@@ -1924,7 +1971,8 @@
             </thead>
             <tbody>
               <tr><td><b>הכנסות מאושרות (V)</b></td><td style="color:#10b981; font-weight:bold;">₪${incomes.confirmedIncome.toLocaleString()}</td><td>מתוך צפי כולל של ₪${incomes.projectedIncome.toLocaleString()}</td></tr>
-              <tr><td><b>מעטפות משתנות ורכב</b></td><td>₪${totalSpentVar.toLocaleString()}</td><td>משתנות, בלת"מים ודלק (ללא שונות)</td></tr>
+              <tr><td><b>מעטפות משתנות ורכב (שוטף)</b></td><td>₪${totalSpentRegularVar.toLocaleString()}</td><td>משתנות, רכב ודלק (ללא בלת"מים)</td></tr>
+              <tr><td><b>מעטפת בלת"מים</b></td><td style="color:#c2410c; font-weight:bold;">₪${totalSpentUnplanned.toLocaleString()}</td><td>הוצאות בלתי מתוכננות (תקציב: ₪4,300)</td></tr>
               <tr><td><b>קבועות באשראי</b></td><td>₪${totalGeneralFixed.toLocaleString()}</td><td>תקשורת, ארנונה, חשמל וביטוחים</td></tr>
               <tr><td><b>הוראות קבע בעו"ש</b></td><td>₪${totalDirectDebits.toLocaleString()}</td><td>משכנתא וגן של בניה</td></tr>
               <tr><td><b>משיכות מזומן</b></td><td>₪${totalCash.toLocaleString()}</td><td>אירועים, בייביסיטר ועמלות</td></tr>
@@ -1943,22 +1991,44 @@
         </div>
 
         <div class="pdf-section pdf-page-break">
-          <div class="pdf-section-title">📂 פירוט עסקאות - מעטפות משתנות ורכב</div>
+          <div class="pdf-section-title">📂 פירוט עסקאות - מעטפות משתנות ורכב (שוטף)</div>
           <table class="pdf-table">
             <thead>
               <tr><th>בית עסק</th><th>מעטפה / קטגוריה</th><th>תאריך</th><th>בנק</th><th>סכום</th></tr>
             </thead>
             <tbody>
-              ${currentMonthTxs.map(t => {
+              ${regularVarTxs.map(t => {
                 const envId = t.envId || t.envelopeId;
                 const envObj = appState.envelopes.find(e => e.id === envId);
-                const envName = envObj ? envObj.name : (envId === 'var_other' ? 'שונות (חיסכון - מוחרג)' : 'משתנות');
+                const envName = envObj ? envObj.name : 'משתנות';
                 const instText = (t.installmentTotal && t.installmentTotal > 1) ? ` (💳 ${t.installmentCurrent} מתוך ${t.installmentTotal})` : '';
                 return `<tr><td>${t.merchant}${instText}</td><td>${envName}</td><td>${t.date || ''}</td><td>${t.isPepper ? 'Pepper' : 'הבינלאומי'}</td><td><b>₪${t.amount.toLocaleString()}</b></td></tr>`;
               }).join('')}
               <tr style="background:#eff6ff; font-weight:bold; border-top:2px solid #2563eb;">
-                <td colspan="4"><b>סה"כ מצטבר משתנות ורכב (ללא שונות)</b></td>
-                <td style="color:#1e40af; font-size:14px;"><b>₪${totalSpentVar.toLocaleString()}</b></td>
+                <td colspan="4"><b>סה"כ מצטבר משתנות ורכב (ללא בלת"מים)</b></td>
+                <td style="color:#1e40af; font-size:14px;"><b>₪${totalSpentRegularVar.toLocaleString()}</b></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="pdf-section pdf-page-break">
+          <div class="pdf-section-title" style="background:#fff7ed; border-right-color:#f97316; color:#c2410c;">🚨 פירוט עסקאות - מעטפת בלת"מים (בלתי מתוכנן)</div>
+          <table class="pdf-table">
+            <thead>
+              <tr><th>בית עסק</th><th>קטגוריה / הערה</th><th>תאריך</th><th>בנק</th><th>סכום</th></tr>
+            </thead>
+            <tbody>
+              ${unplannedTxs.length === 0 
+                ? `<tr><td colspan="5" style="text-align:center; color:#64748b; padding:12px;">אין עסקאות בלת"מים בחודש זה</td></tr>`
+                : unplannedTxs.map(t => {
+                    const instText = (t.installmentTotal && t.installmentTotal > 1) ? ` (💳 ${t.installmentCurrent} מתוך ${t.installmentTotal})` : '';
+                    return `<tr><td>${t.merchant}${instText}</td><td>${t.category || 'בלת"ם'}</td><td>${t.date || ''}</td><td>${t.isPepper ? 'Pepper' : 'הבינלאומי'}</td><td><b>₪${t.amount.toLocaleString()}</b></td></tr>`;
+                  }).join('')
+              }
+              <tr style="background:#fff7ed; font-weight:bold; border-top:2px solid #f97316;">
+                <td colspan="4"><b>סה"כ מצטבר בלת"מים (תקציב מתוכנן: ₪4,300)</b></td>
+                <td style="color:#c2410c; font-size:14px;"><b>₪${totalSpentUnplanned.toLocaleString()}</b></td>
               </tr>
             </tbody>
           </table>
